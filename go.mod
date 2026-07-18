@@ -1,4 +1,4 @@
-module github.com/suyuan32/simple-admin-job
+module github.com/junjie-yan/web-admin-job
 
 go 1.26.0
 

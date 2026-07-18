@@ -10,8 +10,8 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/suyuan32/simple-admin-job/ent/task"
-	"github.com/suyuan32/simple-admin-job/ent/tasklog"
+	"github.com/junjie-yan/web-admin-job/ent/task"
+	"github.com/junjie-yan/web-admin-job/ent/tasklog"
 )
 
 // TaskLogCreate is the builder for creating a TaskLog entity.

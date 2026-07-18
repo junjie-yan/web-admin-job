@@ -19,9 +19,9 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/zeromicro/go-zero/core/logx"
 
-	"github.com/suyuan32/simple-admin-job/ent"
-	"github.com/suyuan32/simple-admin-job/internal/config"
-	"github.com/suyuan32/simple-admin-job/internal/mqs/amq/types/periodicconfig"
+	"github.com/junjie-yan/web-admin-job/ent"
+	"github.com/junjie-yan/web-admin-job/internal/config"
+	"github.com/junjie-yan/web-admin-job/internal/mqs/amq/types/periodicconfig"
 )
 
 type ServiceContext struct {

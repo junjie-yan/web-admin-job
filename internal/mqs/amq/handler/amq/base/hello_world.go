@@ -11,15 +11,15 @@ import (
 	"github.com/zeromicro/go-zero/core/errorx"
 	"github.com/zeromicro/go-zero/core/logx"
 
-	"github.com/suyuan32/simple-admin-job/ent/task"
-	"github.com/suyuan32/simple-admin-job/internal/enum/taskresult"
-	"github.com/suyuan32/simple-admin-job/internal/mqs/amq/types/pattern"
-	"github.com/suyuan32/simple-admin-job/internal/utils/dberrorhandler"
+	"github.com/junjie-yan/web-admin-job/ent/task"
+	"github.com/junjie-yan/web-admin-job/internal/enum/taskresult"
+	"github.com/junjie-yan/web-admin-job/internal/mqs/amq/types/pattern"
+	"github.com/junjie-yan/web-admin-job/internal/utils/dberrorhandler"
 
 	"github.com/hibiken/asynq"
 
-	"github.com/suyuan32/simple-admin-job/internal/mqs/amq/types/payload"
-	"github.com/suyuan32/simple-admin-job/internal/svc"
+	"github.com/junjie-yan/web-admin-job/internal/mqs/amq/types/payload"
+	"github.com/junjie-yan/web-admin-job/internal/svc"
 )
 
 type HelloWorldHandler struct {

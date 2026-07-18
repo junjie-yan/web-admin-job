@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/suyuan32/simple-admin-job/ent"
+	"github.com/junjie-yan/web-admin-job/ent"
 )
 
 // The TaskFunc type is an adapter to allow the use of ordinary

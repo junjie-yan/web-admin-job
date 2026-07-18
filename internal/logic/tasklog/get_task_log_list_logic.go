@@ -3,12 +3,12 @@ package tasklog
 import (
 	"context"
 
-	"github.com/suyuan32/simple-admin-job/ent/predicate"
-	"github.com/suyuan32/simple-admin-job/ent/task"
-	"github.com/suyuan32/simple-admin-job/ent/tasklog"
-	"github.com/suyuan32/simple-admin-job/internal/svc"
-	"github.com/suyuan32/simple-admin-job/internal/utils/dberrorhandler"
-	"github.com/suyuan32/simple-admin-job/types/job"
+	"github.com/junjie-yan/web-admin-job/ent/predicate"
+	"github.com/junjie-yan/web-admin-job/ent/task"
+	"github.com/junjie-yan/web-admin-job/ent/tasklog"
+	"github.com/junjie-yan/web-admin-job/internal/svc"
+	"github.com/junjie-yan/web-admin-job/internal/utils/dberrorhandler"
+	"github.com/junjie-yan/web-admin-job/types/job"
 
 	"github.com/suyuan32/simple-admin-common/utils/pointy"
 	"github.com/zeromicro/go-zero/core/logx"

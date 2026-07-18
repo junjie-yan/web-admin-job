@@ -3,8 +3,8 @@ package mqtask
 import (
 	"github.com/hibiken/asynq"
 
-	"github.com/suyuan32/simple-admin-job/internal/mqs/amq/handler/amq/base"
-	"github.com/suyuan32/simple-admin-job/internal/mqs/amq/types/pattern"
+	"github.com/junjie-yan/web-admin-job/internal/mqs/amq/handler/amq/base"
+	"github.com/junjie-yan/web-admin-job/internal/mqs/amq/types/pattern"
 )
 
 // Register adds task to cron. | 在此处定义任务处理逻辑，注册worker.

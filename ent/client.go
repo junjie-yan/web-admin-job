@@ -9,14 +9,14 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/suyuan32/simple-admin-job/ent/migrate"
+	"github.com/junjie-yan/web-admin-job/ent/migrate"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-	"github.com/suyuan32/simple-admin-job/ent/task"
-	"github.com/suyuan32/simple-admin-job/ent/tasklog"
+	"github.com/junjie-yan/web-admin-job/ent/task"
+	"github.com/junjie-yan/web-admin-job/ent/tasklog"
 
 	stdsql "database/sql"
 )

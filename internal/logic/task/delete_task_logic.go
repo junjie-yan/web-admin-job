@@ -3,13 +3,13 @@ package task
 import (
 	"context"
 
-	"github.com/suyuan32/simple-admin-job/ent"
-	"github.com/suyuan32/simple-admin-job/ent/task"
-	"github.com/suyuan32/simple-admin-job/ent/tasklog"
-	"github.com/suyuan32/simple-admin-job/internal/svc"
-	"github.com/suyuan32/simple-admin-job/internal/utils/dberrorhandler"
-	"github.com/suyuan32/simple-admin-job/internal/utils/entx"
-	"github.com/suyuan32/simple-admin-job/types/job"
+	"github.com/junjie-yan/web-admin-job/ent"
+	"github.com/junjie-yan/web-admin-job/ent/task"
+	"github.com/junjie-yan/web-admin-job/ent/tasklog"
+	"github.com/junjie-yan/web-admin-job/internal/svc"
+	"github.com/junjie-yan/web-admin-job/internal/utils/dberrorhandler"
+	"github.com/junjie-yan/web-admin-job/internal/utils/entx"
+	"github.com/junjie-yan/web-admin-job/types/job"
 
 	"github.com/suyuan32/simple-admin-common/i18n"
 	"github.com/zeromicro/go-zero/core/logx"
