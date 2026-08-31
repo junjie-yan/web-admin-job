@@ -5,9 +5,23 @@ DatabaseConf:
   Type: mysql
   Host: 127.0.0.1
   Port: 3306
-  DBName: simple_admin
-  Username: # set your username
-  Password: # set your password
+  DBName: web_admin
+  Username: root
+  Password: root123
+  MaxOpenConn: 100
+  SSLMode: disable
+  CacheTime: 5
+  Debug: false
+
+# C 端站点管理库（站点、广告、footer、主题、app_detail）
+# web-admin-job 通过直连此库执行批量 SQL（导入/批量更新/导出），避免循环依赖 web-admin/rpc/coreclient
+SitehubDBConf:
+  Type: mysql
+  Host: 127.0.0.1
+  Port: 3306
+  DBName: sitehub
+  Username: sitehub_admin
+  Password: "sH8RtQ5Zv7Lp2CnMx9Qk"
   MaxOpenConn: 100
   SSLMode: disable
   CacheTime: 5
@@ -19,9 +33,8 @@ RedisConf:
 
 Log:
   ServiceName: jobRpcLogger
-  Mode: file
-  Path: /home/data/logs/job/rpc
-  Encoding: json
+  Mode: console
+  Encoding: plain
   Level: info
   Compress: false
   KeepDays: 7
@@ -45,3 +58,19 @@ AsynqConf:
 TaskConf:
   EnableScheduledTask: false
   EnableDPTask: true
+
+# Cloudflare R2 配置（与 web-admin 共用同一 bucket，用于上传 Excel/下载 Excel 输入文件）
+R2Conf:
+  AccessKey: "cf6826940756f6d9277f656635f3d180"
+  SecretKey: "98a13f40b231e676ff4fea66e0e606c70a03094d4762c0b8564b00efccb7b174"
+  Region: auto
+  Bucket: "sem-web"
+  Endpoint: "https://21e247f7e3a491fc8e092d59e7bd361c.r2.cloudflarestorage.com"
+  ForcePathStyle: true
+  PublicBaseURL: "" # 为空时返回 /<key>
+
+# CoreRpc 预留位：当前 web-admin-job 通过直连 sitehub 库执行批量 SQL，
+# 未来若拆分 coreclient 为独立模块，可启用此配置走 RPC。
+CoreRpc:
+  Target: 127.0.0.1:9101
+  Enabled: false
