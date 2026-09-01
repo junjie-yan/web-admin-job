@@ -109,6 +109,19 @@ func (h *baseHandler) finishSuccess(ctx context.Context, taskID uint64, total ui
 	}
 }
 
+// finishSuccessWithMsg 标记任务成功，并写入自定义消息（如含跳过统计）
+func (h *baseHandler) finishSuccessWithMsg(ctx context.Context, taskID, total, success uint64, msg string) {
+	if err := h.svcCtx.AsyncTaskMgr.Finish(ctx, asyncjob.FinishInput{
+		ID:           taskID,
+		Status:       asyncjob.StatusSuccess,
+		TotalCount:   total,
+		SuccessCount: success,
+		ErrorMessage: msg,
+	}); err != nil {
+		logx.WithContext(ctx).Errorf("asynctask: finish success for task %d: %v", taskID, err)
+	}
+}
+
 // finishPartial 标记任务部分成功，并写入结果文件 URL
 func (h *baseHandler) finishPartial(ctx context.Context, taskID uint64, total, success, fail uint64, errMsg, resultURL string) {
 	if err := h.svcCtx.AsyncTaskMgr.Finish(ctx, asyncjob.FinishInput{

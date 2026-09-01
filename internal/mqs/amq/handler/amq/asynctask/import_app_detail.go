@@ -84,9 +84,11 @@ func (h *ImportAppDetailHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 	}
 
 	// 3. 逐批解析 + 入库（每 50 行一批）
+	// 去重规则：站点ID + 详情链接 已存在的记录跳过（详情链接留空的行无法判重，直接插入）
 	const batchSize = 50
 	var (
 		success uint64
+		skipped uint64
 		fail    uint64
 		errs    []string // 错误明细，最多保留 200 条
 	)
@@ -122,8 +124,32 @@ func (h *ImportAppDetailHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 			parsed = append(parsed, r)
 		}
 
+		// 查询本批中已存在的记录（site_id + url），跳过不插入
+		var keys []appDetailKey
+		for _, r := range parsed {
+			if r.URL != nil {
+				keys = append(keys, appDetailKey{SiteID: r.SiteID, URL: *r.URL})
+			}
+		}
+		var existKeys map[appDetailKey]uint64
+		if len(keys) > 0 {
+			existKeys, err = findAppDetailIDsBySiteAndURL(ctx, h.svcCtx.SitehubDB, keys)
+			if err != nil {
+				logger.Error(err)
+				h.finishFailed(ctx, task.ID, fmt.Sprintf("查询 app_detail 已存在记录失败: %v", err))
+				return nil
+			}
+		}
+
 		// 入库（逐条，失败回退到单条记录错误）
 		for _, r := range parsed {
+			if r.URL != nil && existKeys != nil {
+				if _, ok := existKeys[appDetailKey{SiteID: r.SiteID, URL: *r.URL}]; ok {
+					skipped++
+					success++ // 跳过视为处理成功，跳过数在任务消息中单独说明
+					continue
+				}
+			}
 			if e := batchInsertAppDetails(ctx, h.svcCtx.SitehubDB, []*appDetailRow{r}); e != nil {
 				msg := fmt.Sprintf("第 %d 行: %v", r.RowNo, e)
 				batchErrs = append(batchErrs, msg)
@@ -156,10 +182,15 @@ func (h *ImportAppDetailHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 
 	// 5. 终态
 	if fail == 0 {
-		h.finishSuccess(ctx, task.ID, total)
+		if skipped > 0 {
+			h.finishSuccessWithMsg(ctx, task.ID, total, success,
+				fmt.Sprintf("导入完成：成功 %d（含跳过已存在 %d）", success, skipped))
+		} else {
+			h.finishSuccess(ctx, task.ID, total)
+		}
 	} else {
 		h.finishPartial(ctx, task.ID, total, success, fail,
-			fmt.Sprintf("导入完成：成功 %d，失败 %d", success, fail), resultURL)
+			fmt.Sprintf("导入完成：成功 %d（含跳过已存在 %d），失败 %d", success, skipped, fail), resultURL)
 	}
 	return nil
 }

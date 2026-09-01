@@ -125,8 +125,15 @@ func (h *ExportAppDetailHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 		return nil
 	}
 
-	h.finishPartial(ctx, task.ID, total, success, 0,
-		fmt.Sprintf("导出完成：共 %d 条", success), url)
+	if success == total {
+		// 全部导出成功（结果文件 URL 已由 uploadResult 写入）
+		h.finishSuccessWithMsg(ctx, task.ID, total, success,
+			fmt.Sprintf("导出完成：共 %d 条", success))
+	} else {
+		fail := total - success
+		h.finishPartial(ctx, task.ID, total, success, fail,
+			fmt.Sprintf("导出完成：成功 %d 条，失败 %d 条", success, fail), url)
+	}
 	return nil
 }
 
