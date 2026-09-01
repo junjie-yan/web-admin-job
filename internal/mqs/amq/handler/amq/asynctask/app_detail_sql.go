@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 )
 
 // appDetailRow 一行 app_detail 数据（与 Excel 字段一一对应）
@@ -217,33 +216,34 @@ func updateAppDetailByID(ctx context.Context, db *sql.DB, id uint64, r *appDetai
 }
 
 // appDetailExportRow 导出用的扁平行结构（用于写入 Excel）
+// 线上数据存在 NULL 值（如历史数据的 created_at），统一使用 sql.Null* 承接，避免 Scan 报错
 type appDetailExportRow struct {
-	ID              uint64
-	Status          uint8
-	SiteID          uint64
-	Name            string
-	URL             string
-	FirstCategoryID uint64
-	SecondCategoryID uint64
-	Logo            string
-	Developer       string
-	Version         string
-	ContentRating   string
-	Price           string
-	MinAndroid      string
-	Updated         string
-	Downloads       int64
-	Rating          float64
-	ReviewCount     int
-	Description     string
-	GooglePlayURL   string
-	AppleStoreURL   string
-	APKDownloadURL  string
-	APKVersion      string
-	APKSize         string
-	APKUpdated      string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                uint64
+	Status            sql.NullInt64
+	SiteID            uint64
+	Name              sql.NullString
+	URL               sql.NullString
+	FirstCategoryID   sql.NullInt64
+	SecondCategoryID  sql.NullInt64
+	Logo              sql.NullString
+	Developer         sql.NullString
+	Version           sql.NullString
+	ContentRating     sql.NullString
+	Price             sql.NullString
+	MinAndroid        sql.NullString
+	Updated           sql.NullString
+	Downloads         sql.NullInt64
+	Rating            sql.NullFloat64
+	ReviewCount       sql.NullInt64
+	Description       sql.NullString
+	GooglePlayURL     sql.NullString
+	AppleStoreURL     sql.NullString
+	APKDownloadURL    sql.NullString
+	APKVersion        sql.NullString
+	APKSize           sql.NullString
+	APKUpdated        sql.NullString
+	CreatedAt         sql.NullTime
+	UpdatedAt         sql.NullTime
 }
 
 // exportAppDetails 分页查询所有 app_detail（按 filter JSON 过滤，filter 暂只支持 site_id）

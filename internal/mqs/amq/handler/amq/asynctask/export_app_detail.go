@@ -2,6 +2,7 @@ package asynctask
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -162,39 +163,61 @@ func exportHeaders() []string {
 }
 
 // exportRowToStrings 将一行 app_detail 转为字符串切片（顺序与 exportHeaders 一致）
+// NULL 值统一输出空字符串
 func exportRowToStrings(r *appDetailExportRow) []string {
 	statusStr := "启用"
-	if r.Status == 2 {
+	if r.Status.Valid && r.Status.Int64 == 2 {
 		statusStr = "禁用"
 	}
 	return []string{
 		strconv.FormatUint(r.ID, 10),
 		strconv.FormatUint(r.SiteID, 10),
-		r.Name,
-		r.URL,
-		strconv.FormatUint(r.FirstCategoryID, 10),
-		strconv.FormatUint(r.SecondCategoryID, 10),
-		r.Logo,
-		r.Developer,
-		r.Version,
-		r.ContentRating,
-		r.Price,
-		r.MinAndroid,
-		r.Updated,
-		strconv.FormatInt(r.Downloads, 10),
-		strconv.FormatFloat(r.Rating, 'f', 2, 64),
-		strconv.Itoa(r.ReviewCount),
-		r.Description,
-		r.GooglePlayURL,
-		r.AppleStoreURL,
-		r.APKDownloadURL,
-		r.APKVersion,
-		r.APKSize,
-		r.APKUpdated,
+		r.Name.String,
+		r.URL.String,
+		nullInt64Str(r.FirstCategoryID),
+		nullInt64Str(r.SecondCategoryID),
+		r.Logo.String,
+		r.Developer.String,
+		r.Version.String,
+		r.ContentRating.String,
+		r.Price.String,
+		r.MinAndroid.String,
+		r.Updated.String,
+		nullInt64Str(r.Downloads),
+		nullFloat64Str(r.Rating),
+		nullInt64Str(r.ReviewCount),
+		r.Description.String,
+		r.GooglePlayURL.String,
+		r.AppleStoreURL.String,
+		r.APKDownloadURL.String,
+		r.APKVersion.String,
+		r.APKSize.String,
+		r.APKUpdated.String,
 		statusStr,
-		r.CreatedAt.Format("2006-01-02 15:04:05"),
-		r.UpdatedAt.Format("2006-01-02 15:04:05"),
+		nullTimeStr(r.CreatedAt),
+		nullTimeStr(r.UpdatedAt),
 	}
+}
+
+func nullInt64Str(v sql.NullInt64) string {
+	if !v.Valid {
+		return ""
+	}
+	return strconv.FormatInt(v.Int64, 10)
+}
+
+func nullFloat64Str(v sql.NullFloat64) string {
+	if !v.Valid {
+		return ""
+	}
+	return strconv.FormatFloat(v.Float64, 'f', 2, 64)
+}
+
+func nullTimeStr(v sql.NullTime) string {
+	if !v.Valid {
+		return ""
+	}
+	return v.Time.Format("2006-01-02 15:04:05")
 }
 
 var _ asynq.Handler = (*ExportAppDetailHandler)(nil)
