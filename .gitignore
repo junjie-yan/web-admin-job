@@ -23,6 +23,7 @@
 .settings/
 .idea/
 .vscode/
+.gocache/
 
 # config file avoid exposing private data
 *_dev.yaml
