@@ -1,0 +1,73 @@
+# 生产部署配置（Docker 容器内运行时使用）
+# Dockerfile 把此文件复制为 /app/etc/job.yaml
+#
+# 与 web-admin 的 core.prod.yaml 同思路：go-zero 原生字段无 env tag，
+# 写死容器网络里的主机名；DatabaseConf/RedisConf 可被 compose 的
+# DATABASE_* / REDIS_HOST 环境变量覆盖（运维侧改密码无需重建镜像）。
+
+Name: job.rpc
+ListenOn: 0.0.0.0:9105
+
+# 主数据库（async_task 表所在）
+DatabaseConf:
+  Type: mysql
+  Host: mysql
+  Port: 3306
+  DBName: web_admin
+  Username: root
+  Password: sH_ro#4WdN!6Yp@9Jk$3XmT
+  MaxOpenConn: 100
+  SSLMode: disable
+  CacheTime: 5
+
+# C 端站点管理库（app_detail 等业务表，导入/导出/批量更新直连执行）
+# 部署时与主库共用同一 MySQL 实例 root 账号
+SitehubDBConf:
+  Type: mysql
+  Host: mysql
+  Port: 3306
+  DBName: sitehub
+  Username: root
+  Password: sH_ro#4WdN!6Yp@9Jk$3XmT
+  MaxOpenConn: 100
+  SSLMode: disable
+  CacheTime: 5
+
+RedisConf:
+  Host: sem-redis:6379
+
+Log:
+  ServiceName: jobRpcLogger
+  Mode: file
+  Path: /tmp/logs/web-admin/job/rpc
+  Encoding: json
+  Level: info
+  Compress: false
+  KeepDays: 7
+  StackCoolDownMillis: 100
+
+Prometheus:
+  Host: 0.0.0.0
+  Port: 4005
+  Path: /metrics
+
+AsynqConf:
+  Enable: true
+
+TaskConf:
+  EnableScheduledTask: false
+  EnableDPTask: true
+
+# Cloudflare R2 配置（与 web-admin 共用同一 bucket，用于上传结果文件/下载输入文件）
+R2Conf:
+  AccessKey: "cf6826940756f6d9277f656635f3d180"
+  SecretKey: "98a13f40b231e676ff4fea66e0e606c70a03094d4762c0b8564b00efccb7b174"
+  Region: auto
+  Bucket: "sem-web"
+  Endpoint: "https://21e247f7e3a491fc8e092d59e7bd361c.r2.cloudflarestorage.com"
+  ForcePathStyle: true
+  PublicBaseURL: ""
+
+CoreRpc:
+  Target: sem-web-admin-rpc:9101
+  Enabled: false
