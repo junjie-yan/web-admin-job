@@ -137,7 +137,7 @@ func (m *Manager) List(ctx context.Context, f ListFilter) (*ListResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("asyncjob: list tasks: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var data []*Task
 	for rows.Next() {

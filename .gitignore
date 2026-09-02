@@ -24,6 +24,10 @@
 .idea/
 .vscode/
 .gocache/
+.gomodcache/
+
+# goctls gen-rpc-ent-logic 暂存产物（RPC 定义请合并到根 job.proto）
+desc/
 
 # config file avoid exposing private data
 *_dev.yaml

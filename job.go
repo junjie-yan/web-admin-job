@@ -28,7 +28,6 @@ import (
 	"github.com/junjie-yan/web-admin-job/internal/config"
 	"github.com/junjie-yan/web-admin-job/internal/mqs/amq/task/dynamicperiodictask"
 	"github.com/junjie-yan/web-admin-job/internal/mqs/amq/task/mqtask"
-	"github.com/junjie-yan/web-admin-job/internal/mqs/amq/task/scheduletask"
 	"github.com/junjie-yan/web-admin-job/internal/server"
 	"github.com/junjie-yan/web-admin-job/internal/svc"
 	"github.com/junjie-yan/web-admin-job/types/job"
@@ -54,7 +53,7 @@ func main() {
 	serviceGroup := service.NewServiceGroup()
 	defer func() {
 		serviceGroup.Stop()
-		logx.Close()
+		_ = logx.Close()
 	}()
 
 	serviceGroup.Add(s)
@@ -62,10 +61,6 @@ func main() {
 	serviceGroup.Add(mqtask.NewMQTask(ctx))
 	if c.TaskConf.EnableDPTask {
 		serviceGroup.Add(dynamicperiodictask.NewDPTask(ctx))
-	}
-
-	if c.TaskConf.EnableScheduledTask {
-		serviceGroup.Add(scheduletask.NewSchedulerTask(ctx))
 	}
 
 	fmt.Printf("Starting rpc server at %s...\n", c.ListenOn)

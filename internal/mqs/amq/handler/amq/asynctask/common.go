@@ -158,11 +158,11 @@ func (h *baseHandler) finishCanceled(ctx context.Context, taskID uint64) {
 // reportProgress 写入一次进度快照
 func (h *baseHandler) reportProgress(ctx context.Context, taskID, total, success, fail uint64, progress uint8, errDetail string) {
 	if err := h.svcCtx.AsyncTaskMgr.UpdateProgress(ctx, asyncjob.ProgressUpdate{
-		ID:               taskID,
-		TotalCount:       total,
-		SuccessCount:     success,
-		FailCount:        fail,
-		Progress:         progress,
+		ID:                taskID,
+		TotalCount:        total,
+		SuccessCount:      success,
+		FailCount:         fail,
+		Progress:          progress,
 		ErrorDetailAppend: errDetail,
 	}); err != nil {
 		logx.WithContext(ctx).Errorf("asynctask: report progress for task %d: %v", taskID, err)

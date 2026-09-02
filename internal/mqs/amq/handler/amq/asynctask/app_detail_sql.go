@@ -128,12 +128,12 @@ func findAppDetailIDsBySiteAndURL(ctx context.Context, db *sql.DB, keys []appDet
 				var id uint64
 				var url string
 				if err := rows.Scan(&id, &url); err != nil {
-					rows.Close()
+					_ = rows.Close()
 					return nil, fmt.Errorf("scan app_detail: %w", err)
 				}
 				result[appDetailKey{SiteID: siteID, URL: url}] = id
 			}
-			rows.Close()
+			_ = rows.Close()
 		}
 	}
 	return result, nil
@@ -218,32 +218,32 @@ func updateAppDetailByID(ctx context.Context, db *sql.DB, id uint64, r *appDetai
 // appDetailExportRow 导出用的扁平行结构（用于写入 Excel）
 // 线上数据存在 NULL 值（如历史数据的 created_at），统一使用 sql.Null* 承接，避免 Scan 报错
 type appDetailExportRow struct {
-	ID                uint64
-	Status            sql.NullInt64
-	SiteID            uint64
-	Name              sql.NullString
-	URL               sql.NullString
-	FirstCategoryID   sql.NullInt64
-	SecondCategoryID  sql.NullInt64
-	Logo              sql.NullString
-	Developer         sql.NullString
-	Version           sql.NullString
-	ContentRating     sql.NullString
-	Price             sql.NullString
-	MinAndroid        sql.NullString
-	Updated           sql.NullString
-	Downloads         sql.NullInt64
-	Rating            sql.NullFloat64
-	ReviewCount       sql.NullInt64
-	Description       sql.NullString
-	GooglePlayURL     sql.NullString
-	AppleStoreURL     sql.NullString
-	APKDownloadURL    sql.NullString
-	APKVersion        sql.NullString
-	APKSize           sql.NullString
-	APKUpdated        sql.NullString
-	CreatedAt         sql.NullTime
-	UpdatedAt         sql.NullTime
+	ID               uint64
+	Status           sql.NullInt64
+	SiteID           uint64
+	Name             sql.NullString
+	URL              sql.NullString
+	FirstCategoryID  sql.NullInt64
+	SecondCategoryID sql.NullInt64
+	Logo             sql.NullString
+	Developer        sql.NullString
+	Version          sql.NullString
+	ContentRating    sql.NullString
+	Price            sql.NullString
+	MinAndroid       sql.NullString
+	Updated          sql.NullString
+	Downloads        sql.NullInt64
+	Rating           sql.NullFloat64
+	ReviewCount      sql.NullInt64
+	Description      sql.NullString
+	GooglePlayURL    sql.NullString
+	AppleStoreURL    sql.NullString
+	APKDownloadURL   sql.NullString
+	APKVersion       sql.NullString
+	APKSize          sql.NullString
+	APKUpdated       sql.NullString
+	CreatedAt        sql.NullTime
+	UpdatedAt        sql.NullTime
 }
 
 // exportAppDetails 分页查询所有 app_detail（按 filter JSON 过滤，filter 暂只支持 site_id）
@@ -266,7 +266,7 @@ FROM app_detail`
 	if err != nil {
 		return nil, fmt.Errorf("query app_detail for export: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []*appDetailExportRow
 	for rows.Next() {

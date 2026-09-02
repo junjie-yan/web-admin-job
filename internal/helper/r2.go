@@ -56,7 +56,7 @@ func DownloadFile(ctx context.Context, client *s3.Client, bucket, urlOrKey strin
 	if client == nil {
 		return nil, fmt.Errorf("r2: client is nil")
 	}
-	key := ExtractR2Key(urlOrKey)
+	key := extractR2Key(urlOrKey)
 	if key == "" {
 		return nil, fmt.Errorf("r2: empty key after extract from %q", urlOrKey)
 	}
@@ -67,7 +67,7 @@ func DownloadFile(ctx context.Context, client *s3.Client, bucket, urlOrKey strin
 	if err != nil {
 		return nil, fmt.Errorf("r2: get object %q: %w", key, err)
 	}
-	defer out.Body.Close()
+	defer func() { _ = out.Body.Close() }()
 	buf := new(bytes.Buffer)
 	if _, err := buf.ReadFrom(out.Body); err != nil {
 		return nil, fmt.Errorf("r2: read object body: %w", err)
@@ -99,7 +99,7 @@ func UploadFile(ctx context.Context, client *s3.Client, bucket, publicBaseURL, k
 	if err != nil {
 		return "", fmt.Errorf("r2: put object: %w", err)
 	}
-	return BuildR2URL(key, publicBaseURL), nil
+	return buildR2URL(key, publicBaseURL), nil
 }
 
 // buildAsyncObjectKey 生成 async_task 专用 key: async/<kind>/<YYYYMMDD>/<rand><ext>
@@ -121,8 +121,8 @@ func fileExt(name string) string {
 	return name[idx:]
 }
 
-// ExtractR2Key 从 URL 或 key 中提取 R2 对象 key（剥离域名/前导斜杠）
-func ExtractR2Key(urlOrKey string) string {
+// extractR2Key 从 URL 或 key 中提取 R2 对象 key（剥离域名/前导斜杠）
+func extractR2Key(urlOrKey string) string {
 	if urlOrKey == "" {
 		return ""
 	}
@@ -139,9 +139,9 @@ func ExtractR2Key(urlOrKey string) string {
 	return s
 }
 
-// BuildR2URL 根据 key 与 publicBaseURL 构造资源 URL
+// buildR2URL 根据 key 与 publicBaseURL 构造资源 URL
 // publicBaseURL 为空时返回 "/key"
-func BuildR2URL(key, publicBaseURL string) string {
+func buildR2URL(key, publicBaseURL string) string {
 	key = strings.TrimPrefix(key, "/")
 	base := strings.TrimRight(publicBaseURL, "/")
 	if base == "" {

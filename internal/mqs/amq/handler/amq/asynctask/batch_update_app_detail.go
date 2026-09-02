@@ -62,7 +62,7 @@ func (h *BatchUpdateAppDetailHandler) ProcessTask(ctx context.Context, t *asynq.
 		h.finishFailed(ctx, task.ID, fmt.Sprintf("解析 Excel 失败: %v", err))
 		return nil
 	}
-	defer importer.Close()
+	defer func() { _ = importer.Close() }()
 
 	rows, err := importer.GetRows()
 	if err != nil {

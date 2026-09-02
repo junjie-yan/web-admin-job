@@ -80,7 +80,7 @@ func (h *ExportAppDetailHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 
 	// 分页查询并写入 Excel
 	w := helper.NewExcelWriter("APP详情", exportHeaders())
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	const pageSize = 500
 	var success uint64
@@ -141,7 +141,7 @@ func (h *ExportAppDetailHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 // writeEmptyExport 写一个只有表头的空 Excel
 func (h *ExportAppDetailHandler) writeEmptyExport(ctx context.Context, taskID uint64) (string, error) {
 	w := helper.NewExcelWriter("APP详情", exportHeaders())
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 	data, err := w.Bytes()
 	if err != nil {
 		return "", err

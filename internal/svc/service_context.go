@@ -20,7 +20,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/hibiken/asynq"
-	"github.com/redis/go-redis/v9"
 	"github.com/zeromicro/go-zero/core/logx"
 
 	"github.com/junjie-yan/web-admin-job/ent"
@@ -34,9 +33,7 @@ type ServiceContext struct {
 	Config          config.Config
 	DB              *ent.Client // web_admin 库 ent 客户端（任务/日志表）
 	SitehubDB       *sql.DB     // sitehub 库原生 SQL 连接（app_detail 批量操作）
-	Redis           redis.UniversalClient
 	AsynqServer     *asynq.Server
-	AsynqScheduler  *asynq.Scheduler
 	AsynqPTM        *asynq.PeriodicTaskManager
 	AsyncTaskMgr    *asyncjob.Manager // async_task 表管理器
 	R2Client        *s3.Client        // Cloudflare R2 客户端（可能为 nil：未配置时禁用文件下载/上传）
@@ -93,9 +90,7 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		DB:              db,
 		SitehubDB:       sitehubDB,
 		AsynqServer:     c.AsynqConf.WithOriginalRedisConf(c.RedisConf).NewServer(),
-		AsynqScheduler:  c.AsynqConf.NewScheduler(),
 		AsynqPTM:        c.AsynqConf.NewPeriodicTaskManager(periodicconfig.NewEntConfigProvider(db)),
-		Redis:           c.RedisConf.MustNewUniversalRedis(),
 		AsyncTaskMgr:    asyncTaskMgr,
 		R2Client:        r2Client,
 		R2Bucket:        c.R2Conf.Bucket,

@@ -56,7 +56,6 @@ AsynqConf:
   Enable: true
 
 TaskConf:
-  EnableScheduledTask: false
   EnableDPTask: true
 
 # Cloudflare R2 配置（与 web-admin 共用同一 bucket，用于上传 Excel/下载 Excel 输入文件）
@@ -68,9 +67,3 @@ R2Conf:
   Endpoint: "https://21e247f7e3a491fc8e092d59e7bd361c.r2.cloudflarestorage.com"
   ForcePathStyle: true
   PublicBaseURL: "" # 为空时返回 /<key>
-
-# CoreRpc 预留位：当前 web-admin-job 通过直连 sitehub 库执行批量 SQL，
-# 未来若拆分 coreclient 为独立模块，可启用此配置走 RPC。
-CoreRpc:
-  Target: 127.0.0.1:9101
-  Enabled: false

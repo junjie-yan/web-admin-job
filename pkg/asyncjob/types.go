@@ -40,7 +40,7 @@ const (
 	PatternExport      = "async_task:export"       // 批量导出
 )
 
-// AsyncTask asynq 队列消息的 payload（两端共享）
+// AsyncTaskPayload asynq 队列消息的 payload（两端共享）
 // 设计为 JSON 序列化后用 asynq.Task payload 传递
 type AsyncTaskPayload struct {
 	TaskID uint64 `json:"task_id"`
@@ -113,10 +113,10 @@ type FinishInput struct {
 
 // ProgressUpdate 进度更新（消费端使用）
 type ProgressUpdate struct {
-	ID             uint64
-	TotalCount     uint64 // 累计总数（已知总数时填，0 表示不更新）
-	SuccessCount   uint64 // 累计成功数
-	FailCount      uint64 // 累计失败数
-	Progress       uint8  // 0-100
+	ID                uint64
+	TotalCount        uint64 // 累计总数（已知总数时填，0 表示不更新）
+	SuccessCount      uint64 // 累计成功数
+	FailCount         uint64 // 累计失败数
+	Progress          uint8  // 0-100
 	ErrorDetailAppend string // 追加到 error_detail 的单行错误描述（已序列化前的单条文本，内部会做 JSON 转义与条数限制）
 }

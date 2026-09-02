@@ -34,35 +34,25 @@ GOARCH=amd64
 
 GO ?= go
 GOFMT ?= gofmt "-s"
-GOFILES := $(shell find . -name "*.go")
+# 排除隐藏目录（.git/.gomodcache 等），避免 gofmt 扫到非项目源码
+GOFILES := $(shell find . \( -path './.*' \) -prune -o -name '*.go' -print)
 LDFLAGS := -s -w
 
 .PHONY: test
-test: # Run test for the project | 运行项目测试
-	go test -v --cover ./internal/..
+test: # Run test for the project | 运行项目测试（当前无 _test.go，等效全包编译门禁）
+	go test -v --cover ./...
 
 .PHONY: fmt
 fmt: # Format the codes | 格式化代码
 	$(GOFMT) -w $(GOFILES)
 
 .PHONY: lint
-lint: # Run go linter | 运行代码错误分析
-	golangci-lint run -D staticcheck
+lint: # Run go linter | 运行代码错误分析（linter 配置见 .golangci.yml）
+	golangci-lint run
 
 .PHONY: tools
 tools: # Install the necessary tools | 安装必要的工具
-	$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest;
-
-.PHONY: docker
-docker: # Build the docker image | 构建 docker 镜像
-	docker build -f Dockerfile -t ${DOCKER_USERNAME}/$(SERVICE_DASH)-$(PROJECT_BUILD_SUFFIX):${VERSION} .
-	@echo "Build docker successfully"
-
-.PHONY: publish-docker
-publish-docker: # Publish docker image | 发布 docker 镜像
-	echo "${DOCKER_PASSWORD}" | docker login --username ${DOCKER_USERNAME} --password-stdin https://${REPO}
-	docker push ${DOCKER_USERNAME}/$(SERVICE_DASH)-$(PROJECT_BUILD_SUFFIX):${VERSION}
-	@echo "Publish docker successfully"
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 .PHONY: gen-rpc
 gen-rpc: # Generate RPC files from proto | 生成 RPC 的代码
@@ -81,8 +71,8 @@ gen-ent: # Generate Ent codes | 生成 Ent 的代码
 
 .PHONY: gen-rpc-ent-logic
 gen-rpc-ent-logic: # Generate logic code from Ent, need model and group params | 根据 Ent 生成逻辑代码, 需要设置 model 和 group
-	goctls rpc ent --schema=./ent/schema  --style=$(PROJECT_STYLE) --multiple=false --service_name=$(SERVICE) --search_key_num=3 --output=./ --model=$(model) --group=$(group) --proto_out=./desc/$(shell echo $(model) | tr A-Z a-z).proto --i18n=$(PROJECT_I18N) --overwrite=true
-	@echo "Generate logic codes from Ent successfully"
+	@mkdir -p ./desc && goctls rpc ent --schema=./ent/schema  --style=$(PROJECT_STYLE) --multiple=false --service_name=$(SERVICE) --search_key_num=3 --output=./ --model=$(model) --group=$(group) --proto_out=./desc/$(shell echo $(model) | tr A-Z a-z).proto --i18n=$(PROJECT_I18N) --overwrite=true
+	@echo "Generate logic codes from Ent successfully (desc/ 下为生成暂存文件，已 gitignore，请手动合并 RPC 定义到 job.proto)"
 
 .PHONY: build-win
 build-win: # Build project for Windows | 构建Windows下的可执行文件

@@ -10,7 +10,6 @@ import (
 	"github.com/zeromicro/go-zero/core/logx"
 
 	"github.com/junjie-yan/web-admin-job/internal/helper"
-	"github.com/junjie-yan/web-admin-job/internal/mqs/amq/types/pattern"
 	"github.com/junjie-yan/web-admin-job/internal/svc"
 	"github.com/junjie-yan/web-admin-job/pkg/asyncjob"
 )
@@ -68,7 +67,7 @@ func (h *ImportAppDetailHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 		h.finishFailed(ctx, task.ID, fmt.Sprintf("解析 Excel 失败: %v", err))
 		return nil
 	}
-	defer importer.Close()
+	defer func() { _ = importer.Close() }()
 
 	rows, err := importer.GetRows()
 	if err != nil {
@@ -307,7 +306,7 @@ func (h *baseHandler) uploadErrorDetails(ctx context.Context, taskID uint64, tas
 		return "", nil
 	}
 	w := helper.NewExcelWriter("错误明细", []string{"序号", "错误描述"})
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 	// 限制 200 条
 	if len(errs) > 200 {
 		errs = errs[:200]
@@ -326,6 +325,3 @@ func (h *baseHandler) uploadErrorDetails(ctx context.Context, taskID uint64, tas
 
 // 编译期断言：保证 handler 实现 asynq.Handler
 var _ asynq.Handler = (*ImportAppDetailHandler)(nil)
-
-// 保证 pattern 常量被引用（避免 unused 警告，未来注册器会用到）
-var _ = pattern.AsyncTaskImport

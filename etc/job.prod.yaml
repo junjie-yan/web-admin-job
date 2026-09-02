@@ -2,8 +2,7 @@
 # Dockerfile 把此文件复制为 /app/etc/job.yaml
 #
 # 与 web-admin 的 core.prod.yaml 同思路：go-zero 原生字段无 env tag，
-# 写死容器网络里的主机名；DatabaseConf/RedisConf 可被 compose 的
-# DATABASE_* / REDIS_HOST 环境变量覆盖（运维侧改密码无需重建镜像）。
+# 写死容器网络内的主机名与凭据；如需变更密码/地址，修改本文件后重新构建镜像。
 
 Name: job.rpc
 ListenOn: 0.0.0.0:9105
@@ -55,7 +54,6 @@ AsynqConf:
   Enable: true
 
 TaskConf:
-  EnableScheduledTask: false
   EnableDPTask: true
 
 # Cloudflare R2 配置（与 web-admin 共用同一 bucket，用于上传结果文件/下载输入文件）
@@ -67,7 +65,3 @@ R2Conf:
   Endpoint: "https://21e247f7e3a491fc8e092d59e7bd361c.r2.cloudflarestorage.com"
   ForcePathStyle: true
   PublicBaseURL: ""
-
-CoreRpc:
-  Target: sem-web-admin-rpc:9101
-  Enabled: false

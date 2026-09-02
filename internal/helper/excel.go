@@ -66,7 +66,8 @@ func NewExcelWriter(sheetName string, headers []string) *ExcelWriter {
 	}
 	w := &ExcelWriter{file: f, sheetName: sheetName, rowIdx: 1}
 	if len(headers) > 0 {
-		w.WriteRow(headers)
+		// 表头行坐标恒合法，写入失败不可达；显式忽略以满足 errcheck
+		_ = w.WriteRow(headers)
 	}
 	return w
 }

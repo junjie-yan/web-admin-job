@@ -1,0 +1,21 @@
+# golangci-lint v2 配置
+# v2 移除了 -E/-D 命令行参数，linter 配置统一收敛到本文件（Makefile 只调 golangci-lint run）
+version: "2"
+
+linters:
+  # standard = errcheck / govet / ineffassign / staticcheck / unused（v2 默认集）
+  # 说明：v2 的 staticcheck 已合并 gosimple/stylecheck；旧版 Makefile 的 -D staticcheck
+  # 是历史遗留（当时 staticcheck 与新 Go 版本不兼容），v2 构建工具链已解决，恢复启用
+  default: standard
+  settings:
+    staticcheck:
+      checks:
+        - all
+        # SA5008（未知 struct tag 选项）：go-zero conf 在 json tag 上扩展了
+        # optional/default/range 等选项，stdlib 规则会误报，故单独排除
+        - -SA5008
+        # ST1000（缺包注释）/ ST1003（ById 应为 ByID）：goctls 生成的 logic 包
+        # 无包注释、By* 命名来自 proto 字段（ById），手改会被下次 gen-rpc 覆盖，
+        # 与生成器规范冲突，故排除
+        - -ST1000
+        - -ST1003
