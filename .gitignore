@@ -29,8 +29,12 @@
 # goctls gen-rpc-ent-logic 暂存产物（RPC 定义请合并到根 job.proto）
 desc/
 
+# 临时调试脚本工作目录（如 go run ./tmp/inspector），用完即删
+tmp/
+
 # config file avoid exposing private data
 *_dev.yaml
+*_local.yaml
 
 # Build files
 *_api

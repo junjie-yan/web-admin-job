@@ -26,6 +26,7 @@
 ```bash
 # 启动服务（开发配置）
 go run job.go -f etc/job.yaml
+go run job.go -f etc/job.local.yaml   # 个人本地配置（Mode: dev 开 reflection；不入库）
 
 # 代码生成
 make gen-rpc            # proto → types/job + jobclient + internal/server 骨架
@@ -40,6 +41,9 @@ make test               # go test ./internal/..
 # 构建
 make build-mac / build-linux / build-win
 # 生产镜像由 CI（.github/workflows/deploy.yml）基于 docker/Dockerfile 多阶段构建并推送 ghcr.io
+
+# 临时调试脚本（放 tmp/，已 gitignore，用完即删）
+go run ./tmp/inspector   # 示例：清理 asynq 队列遗留任务
 
 # 查看 make help
 ```
@@ -83,17 +87,16 @@ func NewMyThingHandler(svcCtx *svc.ServiceContext) *MyThingHandler {
 }
 
 func (h *MyThingHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
-    payload, err := h.loadPayload(t)          // 1. 解析 task_id
-    if err != nil { return err }              // 基础设施错误 → 返回触发重试
-    task, err := h.markProcessing(ctx, payload.TaskID)  // 2. CAS 抢占
-    if err != nil { return nil }              // 被抢占/取消 → 不重试
-    // 3. 业务校验（biz_module/type 不符 → finishFailed + return nil）
-    // 4. 分批处理：每批 checkCanceled → 执行 → reportProgress
-    // 5. h.finishSuccess / finishPartial / finishFailed 写终态
+    task, retry := h.claimTask(ctx, t, asyncjob.BizMyThing, asyncjob.TypeXXX) // 解析+抢占+校验
+    if retry != nil { return retry }   // 基础设施错误 → 返回触发重试
+    if task == nil { return nil }      // 被抢占/取消/biz 不符 → 已处理，不重试
+    // 3. 分批处理：每批 checkCanceled → 执行 → reportProgress
+    // 4. h.finishSuccess / finishPartial / finishFailed 写终态
     return nil
 }
 ```
 
+业务域逻辑（Excel 行解析/名称解析/SQL）收敛到 `asynctask/<业务模块>/` 子包（参照 `appdetail/`），handler 只做编排。
 完整骨架说明见 [common.go](../internal/mqs/amq/handler/amq/asynctask/common.go) 包注释。
 
 **Step 3 — 注册路由**（[mqtask/register.go](../internal/mqs/amq/task/mqtask/register.go)）：

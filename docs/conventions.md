@@ -40,7 +40,7 @@ pkg/asyncjob              ← 跨服务公共契约（与 web-admin API 共享�
 | # | 规则 |
 |---|---|
 | D1 | ent 管理的表（定时任务配置）放 `web_admin` 库，schema 在 `ent/schema/`，表名 `sys_` 前缀 |
-| D2 | sitehub 业务表操作走 `svcCtx.SitehubDB` 原生 SQL，统一收敛在 `handler/amq/asynctask/app_detail_sql.go` 同级文件 |
+| D2 | sitehub 业务表操作走 `svcCtx.SitehubDB` 原生 SQL，统一收敛在 `handler/amq/asynctask/<业务模块>/repo.go`（如 `appdetail/repo.go`） |
 | D3 | SQL 参数一律使用占位符 `?`，禁止字符串拼接值（防注入）；表名/列名拼接仅允许来自代码内白名单常量 |
 | D4 | 查询可能为 NULL 的列必须用 `sql.Null*` 承接（线上历史数据存在 NULL） |
 | D5 | schema 变更后必须 `make gen-ent`，禁止手改 `ent/` 生成代码 |
@@ -61,7 +61,7 @@ pkg/asyncjob              ← 跨服务公共契约（与 web-admin API 共享�
 
 | # | 规则 |
 |---|---|
-| C1 | 新增配置项：`internal/config/config.go` 加字段（`json:",optional"` 标注）+ `etc/job.yaml` 与 `etc/job.prod.yaml` 同步补默认值 |
+| C1 | 新增配置项：`internal/config/config.go` 加字段（`json:",optional"` 标注）+ `etc/job.yaml`、`etc/job.test.yaml`、`etc/job.prod.yaml` 同步补默认值 |
 | C2 | 可选依赖（如 R2）未配置时必须优雅降级（nil 客户端 + 明确报错），禁止 panic |
 
 ## 6. Git 与发布规则

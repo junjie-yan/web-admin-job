@@ -58,7 +58,7 @@ type Task struct {
 	FailCount     uint64 `json:"failCount"`     // 失败条数
 	Progress      uint8  `json:"progress"`      // 进度 0-100
 	FileURL       string `json:"fileUrl"`       // 输入文件 URL（R2）
-	FileName      string `json:"fileName"`      // 原始文件名
+	FileName      string `json:"fileName"`      // 原始文件名；导出任务无输入文件，生产端复用该字段存放过滤参数 JSON
 	ResultFileURL string `json:"resultFileUrl"` // 结果/错误明细文件 URL
 	ErrorMessage  string `json:"errorMessage"`  // 整体错误信息
 	ErrorDetail   string `json:"errorDetail"`   // 错误明细 JSON

@@ -93,18 +93,20 @@
 
 | 文件 | 职责 |
 |---|---|
-| `common.go` | **baseHandler**：任务生命周期公共方法（所有 Handler 嵌入复用） |
-| `import_app_detail.go` | Excel 批量导入 app_detail |
-| `batch_update_app_detail.go` | Excel 批量更新 app_detail |
+| `common.go` | **baseHandler**：任务生命周期公共方法（claimTask/readInputExcel/finish* 等，所有 Handler 嵌入复用） |
+| `errdetail.go` | 错误明细 Excel 生成并上传 R2（导入/批量更新共用） |
+| `import_app_detail.go` | Excel 批量导入 app_detail（编排：解析 → 查重 → 批量插入） |
+| `batch_update_app_detail.go` | Excel 批量更新 app_detail（编排：解析 → 定位 → 逐条更新） |
 | `export_app_detail.go` | 导出 app_detail 为 Excel 上传 R2 |
-| `app_detail_sql.go` | 底层 SQL（批量插入/查重/分页导出） |
+| `appdetail/` | **app_detail 业务域子包**：`parse.go` 行解析 / `resolver.go` 名称→ID / `repo.go` SQL 读写 / `export.go` 导出行结构与格式化 |
+
+> Handler 只负责任务编排，业务域逻辑（行解析/SQL）收敛在同名子包；新增业务模块时参照 `appdetail/` 建子包。
 
 **baseHandler 生命周期方法**（详见 `common.go` 包注释）：
 
 ```
-loadPayload        解析 payload 拿 task_id
-markProcessing     CAS pending→processing（防重复消费/防已取消任务）
-downloadInput      从 R2 下载输入文件
+claimTask          前置流程封装：解析 payload → markProcessing（CAS 抢占）→ 校验 biz/type
+readInputExcel     下载 R2 输入文件并解析为数据行
 checkCanceled      长任务每批次检查是否被取消
 reportProgress     每批次回写进度快照（含错误明细追加）
 uploadResult       失败明细/导出文件上传 R2
@@ -114,8 +116,8 @@ finishSuccess / finishPartial / finishFailed / finishCanceled  写终态
 **标准执行骨架**：
 
 ```
-解析 payload → markProcessing → 下载/解析输入 → 分批执行业务
-（每批: 检查取消 → 处理 → reportProgress）→ uploadResult → finish*
+claimTask（payload + CAS 抢占 + biz/type 校验）→ readInputExcel
+→ 分批执行业务（每批: 检查取消 → 处理 → reportProgress）→ uploadResult → finish*
 ```
 
 ### 5.4 公共契约层（跨服务共享）— `pkg/asyncjob/`
@@ -139,7 +141,7 @@ finishSuccess / finishPartial / finishFailed / finishCanceled  写终态
 | `internal/utils/entx/` | ent 事务封装（TxCtx/WithTx） |
 | `internal/utils/dberrorhandler/` | DB 错误统一转换 |
 | `ent/` + `ent/schema/` | ORM 生成代码与 schema（task → `sys_tasks`，task_log → `sys_task_logs`） |
-| `etc/` | 配置文件（job.yaml 开发 / job.prod.yaml 生产） |
+| `etc/` | 配置文件（job.yaml 默认开发 / job.local.yaml 个人本地·不入库 / job.test.yaml 测试 / job.prod.yaml 生产） |
 
 ## 6. 数据模型
 

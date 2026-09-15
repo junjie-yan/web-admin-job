@@ -1,0 +1,71 @@
+# 测试环境部署配置（与 job.prod.yaml 同构独立部署，仅数据库/Redis 指向不同）
+# 部署方式：与生产一致的容器网络（服务名主机），数据库名加 _test 后缀隔离
+# 启动：go run job.go -f etc/job.test.yaml（容器内则由 Dockerfile 复制为 job.yaml）
+#
+# ⚠️ 以下密码为占位符，部署前替换为测试环境真实凭据
+
+Name: job.rpc
+ListenOn: 0.0.0.0:9105
+
+# 服务运行模式：test 会注册 gRPC reflection，便于在测试环境用 grpcurl 调试
+Mode: test
+
+# 主数据库（async_task 表所在，测试库）
+DatabaseConf:
+  Type: mysql
+  Host: mysql
+  Port: 3306
+  DBName: web_admin_test
+  Username: root
+  Password: CHANGE_ME_TEST_DB_PASSWORD
+  MaxOpenConn: 100
+  SSLMode: disable
+  CacheTime: 5
+
+# C 端站点管理库（app_detail 等业务表，测试库）
+SitehubDBConf:
+  Type: mysql
+  Host: mysql
+  Port: 3306
+  DBName: sitehub_test
+  Username: root
+  Password: CHANGE_ME_TEST_DB_PASSWORD
+  MaxOpenConn: 100
+  SSLMode: disable
+  CacheTime: 5
+
+# 测试环境 Redis（按 test 部署的 compose 服务名调整）
+RedisConf:
+  Host: sem-redis:6379
+
+Log:
+  ServiceName: jobRpcLogger
+  Mode: file
+  Path: /tmp/logs/web-admin/job/rpc
+  Encoding: json
+  Level: info
+  Compress: false
+  KeepDays: 7
+  StackCoolDownMillis: 100
+
+Prometheus:
+  Host: 0.0.0.0
+  Port: 4005
+  Path: /metrics
+
+AsynqConf:
+  Enable: true
+
+TaskConf:
+  EnableDPTask: true
+
+# Cloudflare R2 配置（与生产共用同一 bucket；结果文件 key 前缀为 async/，测试数据可通过
+# kind 前缀区分，如需彻底隔离可换成独立 test bucket）
+R2Conf:
+  AccessKey: "cf6826940756f6d9277f656635f3d180"
+  SecretKey: "98a13f40b231e676ff4fea66e0e606c70a03094d4762c0b8564b00efccb7b174"
+  Region: auto
+  Bucket: "sem-web"
+  Endpoint: "https://21e247f7e3a491fc8e092d59e7bd361c.r2.cloudflarestorage.com"
+  ForcePathStyle: true
+  PublicBaseURL: ""
