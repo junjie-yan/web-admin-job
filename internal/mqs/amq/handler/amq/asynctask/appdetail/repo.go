@@ -45,9 +45,26 @@ func BatchInsert(ctx context.Context, db *sql.DB, rows []*Row) error {
 	return err
 }
 
-// FindIDsBySiteAndURL 给定一批 Key，返回已存在记录的键 → id 映射
-// url 为空的键会被跳过；内部按 500/批拆分 IN 查询，避免 IN 列表过长
+// FindIDsBySiteAndURL 给定一批 Key，返回库中已存在记录的键 → id 映射
+// 用于新增前的详情链接占用检查；url 为空的键会被跳过；内部按 500/批拆分 IN 查询
 func FindIDsBySiteAndURL(ctx context.Context, db *sql.DB, keys []Key) (map[Key]uint64, error) {
+	return findIDsBySiteAndStrCol(ctx, db, "url", keys)
+}
+
+// FindIDsBySiteAndGooglePlayURL 按 站点+GooglePlay链接 批量定位已存在记录（第一优先级定位键）
+func FindIDsBySiteAndGooglePlayURL(ctx context.Context, db *sql.DB, keys []Key) (map[Key]uint64, error) {
+	return findIDsBySiteAndStrCol(ctx, db, "google_play_url", keys)
+}
+
+// FindIDsBySiteAndAppleStoreURL 按 站点+Apple商店链接 批量定位已存在记录（第二优先级定位键）
+func FindIDsBySiteAndAppleStoreURL(ctx context.Context, db *sql.DB, keys []Key) (map[Key]uint64, error) {
+	return findIDsBySiteAndStrCol(ctx, db, "apple_store_url", keys)
+}
+
+// findIDsBySiteAndStrCol 按 (site_id, col IN (...)) 查询记录 id，返回 键 → id 映射
+// col 仅接受本包调用方传入的固定列名常量，不拼接任何外部输入；
+// 内部按 500/批拆分 IN 查询，避免 IN 列表过长
+func findIDsBySiteAndStrCol(ctx context.Context, db *sql.DB, col string, keys []Key) (map[Key]uint64, error) {
 	result := make(map[Key]uint64, len(keys))
 	if len(keys) == 0 {
 		return result, nil
@@ -58,39 +75,39 @@ func FindIDsBySiteAndURL(ctx context.Context, db *sql.DB, keys []Key) (map[Key]u
 		end := min(start+batchSize, len(keys))
 		batch := keys[start:end]
 
-		// 按 site_id 分组，构造 (site_id, url IN (...)) 查询
-		siteToURLs := make(map[uint64][]string)
+		// 按 site_id 分组，构造 (site_id, col IN (...)) 查询
+		siteToVals := make(map[uint64][]string)
 		for _, k := range batch {
 			if k.URL == "" {
 				continue
 			}
-			siteToURLs[k.SiteID] = append(siteToURLs[k.SiteID], k.URL)
+			siteToVals[k.SiteID] = append(siteToVals[k.SiteID], k.URL)
 		}
-		for siteID, urls := range siteToURLs {
-			if len(urls) == 0 {
+		for siteID, vals := range siteToVals {
+			if len(vals) == 0 {
 				continue
 			}
-			placeholders := make([]string, len(urls))
-			args := make([]any, 0, len(urls)+1)
+			placeholders := make([]string, len(vals))
+			args := make([]any, 0, len(vals)+1)
 			args = append(args, siteID)
-			for i, u := range urls {
+			for i, v := range vals {
 				placeholders[i] = "?"
-				args = append(args, u)
+				args = append(args, v)
 			}
-			q := fmt.Sprintf("SELECT id, url FROM app_detail WHERE site_id = ? AND url IN (%s)",
-				strings.Join(placeholders, ","))
+			q := fmt.Sprintf("SELECT id, %s FROM app_detail WHERE site_id = ? AND %s IN (%s)",
+				col, col, strings.Join(placeholders, ","))
 			rows, err := db.QueryContext(ctx, q, args...)
 			if err != nil {
 				return nil, fmt.Errorf("query app_detail: %w", err)
 			}
 			for rows.Next() {
 				var id uint64
-				var url string
-				if err := rows.Scan(&id, &url); err != nil {
+				var val string
+				if err := rows.Scan(&id, &val); err != nil {
 					_ = rows.Close()
 					return nil, fmt.Errorf("scan app_detail: %w", err)
 				}
-				result[Key{SiteID: siteID, URL: url}] = id
+				result[Key{SiteID: siteID, URL: val}] = id
 			}
 			if err := rows.Err(); err != nil {
 				_ = rows.Close()
@@ -103,7 +120,7 @@ func FindIDsBySiteAndURL(ctx context.Context, db *sql.DB, keys []Key) (map[Key]u
 }
 
 // FindIDsBySiteAndName 给定一批 NameKey，返回键 → id 列表映射（同站点同名可能对应多条记录，
-// 由调用方决定如何处理：通常唯一时更新，多条时要求改用站点+url 精确定位）
+// 由调用方决定如何处理：通常唯一时更新，多条时要求改用 store URL 精确定位）
 // 内部按 500/批拆分 IN 查询
 func FindIDsBySiteAndName(ctx context.Context, db *sql.DB, keys []NameKey) (map[NameKey][]uint64, error) {
 	result := make(map[NameKey][]uint64, len(keys))

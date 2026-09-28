@@ -1,4 +1,4 @@
-// Package asyncjob 提供异步任务（导入/导出/批量更新）的公共数据模型与持久化管理。
+// Package asyncjob 提供异步任务（导入/导出）的公共数据模型与持久化管理。
 //
 // 本包被两个服务共享使用：
 //   - web-admin API（生产端）：创建任务、查询列表、取消、删除
@@ -12,9 +12,8 @@ package asyncjob
 
 // 任务类型
 const (
-	TypeImport      = "import"       // 批量导入
-	TypeExport      = "export"       // 批量导出
-	TypeBatchUpdate = "batch_update" // 批量更新
+	TypeImport = "import" // 批量导入（upsert：存在则更新，不存在则新增）
+	TypeExport = "export" // 批量导出
 )
 
 // 任务状态
@@ -35,9 +34,8 @@ const (
 // asynq pattern（与 web-admin-job 消费端约定，payload 为 AsyncTaskPayload）
 // 放在公开包中以便 web-admin API 生产端引用，避免引用 internal 包
 const (
-	PatternImport      = "async_task:import"       // 批量导入
-	PatternBatchUpdate = "async_task:batch_update" // 批量更新
-	PatternExport      = "async_task:export"       // 批量导出
+	PatternImport = "async_task:import" // 批量导入
+	PatternExport = "async_task:export" // 批量导出
 )
 
 // AsyncTaskPayload asynq 队列消息的 payload（两端共享）

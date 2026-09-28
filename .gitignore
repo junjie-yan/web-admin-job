@@ -35,6 +35,7 @@ tmp/
 # config file avoid exposing private data
 *_dev.yaml
 *_local.yaml
+*.local.yaml
 
 # Build files
 *_api

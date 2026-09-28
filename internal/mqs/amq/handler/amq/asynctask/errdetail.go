@@ -15,7 +15,7 @@ const excelContentType = "application/vnd.openxmlformats-officedocument.spreadsh
 const maxErrorDetails = 200
 
 // uploadErrorDetails 将错误明细写入 Excel 并上传 R2，返回结果 URL
-// 超过 maxErrorDetails 条时截断；导入/批量更新等含失败条目的任务共用
+// 超过 maxErrorDetails 条时截断；导入等含失败条目的任务共用
 func (h *baseHandler) uploadErrorDetails(ctx context.Context, taskID uint64, taskType string, errs []string) (string, error) {
 	if len(errs) == 0 {
 		return "", nil

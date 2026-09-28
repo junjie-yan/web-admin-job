@@ -1,4 +1,4 @@
-// Package asynctask 实现异步任务（导入/导出/批量更新）的消费端处理逻辑。
+// Package asynctask 实现异步任务（导入/导出）的消费端处理逻辑。
 //
 // 每个 handler 实现 asynq.Handler 接口，由 mqtask.Register 注册到 asynq.Server。
 // 任务执行流程（通用骨架）：

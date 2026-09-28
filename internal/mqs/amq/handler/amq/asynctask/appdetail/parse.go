@@ -1,5 +1,5 @@
 // Package appdetail 收敛 app_detail 业务域的行解析、名称解析与 SQL 访问，
-// 供 asynctask 包的导入/导出/批量更新 Handler 编排调用。
+// 供 asynctask 包的导入/导出 Handler 编排调用。
 package appdetail
 
 import (
@@ -7,15 +7,14 @@ import (
 	"strings"
 
 	"github.com/junjie-yan/web-admin-job/internal/helper"
-	"github.com/junjie-yan/web-admin-job/pkg/slugify"
 )
 
-// Excel 模板列索引（导入与批量更新共用同一列布局，与 web-admin 模板一致）
+// Excel 模板列索引（列布局与 web-admin 模板一致）
 // 列序与导出 Excel 对应字段顺序保持一致（Logo 在分类后、应用描述在评论数后）
 const (
 	colSite       = 0  // 站点域名或 ID（必填）
-	colName       = 1  // 应用名称（导入必填，批量更新可选定位键）
-	colURL        = 2  // 详情链接（批量更新优先定位键）
+	colName       = 1  // 应用名称（第三优先级定位键）
+	colURL        = 2  // 详情链接（数据字段；新增时留空按名称自动生成，更新时留空保持原值）
 	colFirstCat   = 3  // 一级分类名称或 ID
 	colSecondCat  = 4  // 二级分类名称或 ID
 	colLogo       = 5  // Logo 地址
@@ -37,12 +36,12 @@ const (
 )
 
 // Row 一行 app_detail 数据（与 Excel 字段一一对应）
-// 指针字段：nil 表示该列未填写（批量更新时跳过，导入时使用默认值）
+// 指针字段：nil 表示该列未填写（更新已存在记录时跳过，新增时使用默认值）
 type Row struct {
-	RowNo              int    // Excel 行号（从 2 开始，便于错误定位）
-	SiteID             uint64 // 必填，导入/批量更新都用
-	Name               string // 必填（导入）；批量更新时空串表示不更新该字段
-	URL                *string
+	RowNo              int     // Excel 行号（从 2 开始，便于错误定位）
+	SiteID             uint64  // 必填
+	Name               string  // 第三优先级定位键（可空，但三个定位键至少一项非空）
+	URL                *string // 详情链接；新增留空时由 Handler 按名称生成 slug
 	FirstCategoryID    *uint64
 	SecondCategoryID   *uint64
 	Logo               *string
@@ -67,41 +66,39 @@ type Row struct {
 	Status             *uint8 // 1 启用 / 2 禁用
 }
 
-// Key 定位记录的唯一键（site_id + url），导入查重与批量更新定位共用
+// Key 通用定位键（site_id + 字符串列值），用于 store URL 定位与详情链接占用检查
 type Key struct {
 	SiteID uint64
 	URL    string
 }
 
-// NameKey 按名称定位记录的键（site_id + name），批量更新时 url 缺失的兜底定位方式
+// NameKey 按名称定位记录的键（site_id + name），第三优先级定位方式（同名可能多条）
 type NameKey struct {
 	SiteID uint64
 	Name   string
 }
 
 // ParseRow 解析单行 Excel 数据为 Row，rowNo 为 Excel 行号（从 2 开始）
-// 必填校验由调用方按任务类型控制：
-//   - 导入：requireName=true（应用名称必填；url 留空时按名称自动生成 slug，生成后参与查重）
-//   - 批量更新：requireURL=true（详情链接与应用名称至少填一项作为定位键，都填时优先详情链接）
+// 定位键优先级：站点+GooglePlay链接 → 站点+Apple商店链接 → 站点+应用名称，至少填写一项；
+// 命中已存在记录则更新填写字段，未命中则新增（upsert 语义由调用方 Handler 编排）
 //
 // 站点统一填域名（经 Resolver 查库转 ID），分类填名称，均兼容纯数字 ID 直接填写
 // 返回 nil, nil 表示空行
-func ParseRow(rowNo int, row []string, nr *Resolver, requireName, requireURL bool) (*Row, error) {
+func ParseRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
 	siteStr := strings.TrimSpace(cell(row, colSite))
 	name := strings.TrimSpace(cell(row, colName))
 	urlStr := strings.TrimSpace(cell(row, colURL))
+	gpStr := strings.TrimSpace(cell(row, colGooglePlay))
+	asStr := strings.TrimSpace(cell(row, colAppleStore))
 
-	if siteStr == "" && name == "" && urlStr == "" {
+	if siteStr == "" && name == "" && urlStr == "" && gpStr == "" && asStr == "" {
 		return nil, nil // 空行
 	}
 	if siteStr == "" {
 		return nil, rowErr(rowNo, "站点域名 必填")
 	}
-	if requireName && name == "" {
-		return nil, rowErr(rowNo, "应用名称 必填")
-	}
-	if requireURL && urlStr == "" && name == "" {
-		return nil, rowErr(rowNo, "详情链接 与 应用名称 至少填写一项（批量更新定位键）")
+	if name == "" && gpStr == "" && asStr == "" {
+		return nil, rowErr(rowNo, "应用名称 / GooglePlay链接 / Apple商店链接 至少填写一项（定位键）")
 	}
 
 	siteID, err := nr.ResolveSite(siteStr)
@@ -110,13 +107,6 @@ func ParseRow(rowNo int, row []string, nr *Resolver, requireName, requireURL boo
 	}
 
 	r := &Row{RowNo: rowNo, SiteID: siteID, Name: name}
-	if urlStr == "" {
-		// 导入时 URL 留空则按应用名称自动生成（"Sketchbook AA" → "/app/sketchbook-aa"），
-		// 生成后同样参与 site_id+url 查重；名称也为空时（批量更新场景）不生成
-		if u := slugify.Path("app", name); u != "" {
-			urlStr = u
-		}
-	}
 	if urlStr != "" {
 		r.URL = &urlStr
 	}
