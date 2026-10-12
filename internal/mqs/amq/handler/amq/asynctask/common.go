@@ -30,13 +30,14 @@ type baseHandler struct {
 	svcCtx *svc.ServiceContext
 }
 
-// claimTask 封装 handler 前置流程：解析 payload → 抢占任务（CAS pending→processing）→ 校验 biz_module/type。
+// claimTypedTask 封装 handler 前置流程：解析 payload → 抢占任务（CAS pending→processing）→ 校验 type。
+// bizModule 的路由由 dispatcher 按白名单分发（见 dispatch.go）。
 //
 // 返回值约定：
 //   - err != nil：基础设施错误（payload 非法），调用方应 return err 触发 asynq 重试
-//   - task == nil 且 err == nil：任务已被取消/被其他 worker 抢占，或 biz/type 不符（终态已写），直接 return nil
+//   - task == nil 且 err == nil：任务已被取消/被其他 worker 抢占，或 type 不符（终态已写），直接 return nil
 //   - task != nil：抢占成功，继续执行业务逻辑
-func (h *baseHandler) claimTask(ctx context.Context, t *asynq.Task, bizModule, taskType string) (*asyncjob.Task, error) {
+func (h *baseHandler) claimTypedTask(ctx context.Context, t *asynq.Task, taskType string) (*asyncjob.Task, error) {
 	logger := logx.WithContext(ctx)
 
 	payload, err := h.loadPayload(t)
@@ -52,8 +53,8 @@ func (h *baseHandler) claimTask(ctx context.Context, t *asynq.Task, bizModule, t
 		return nil, nil
 	}
 
-	if task.BizModule != bizModule || task.Type != taskType {
-		errMsg := fmt.Sprintf("asynctask: task %d biz_module/type mismatch: got %s/%s", task.ID, task.BizModule, task.Type)
+	if task.Type != taskType {
+		errMsg := fmt.Sprintf("asynctask: task %d type mismatch: got %s, want %s", task.ID, task.Type, taskType)
 		logger.Error(errMsg)
 		h.finishFailed(ctx, task.ID, errMsg)
 		return nil, nil
@@ -120,13 +121,14 @@ func (h *baseHandler) readInputExcel(ctx context.Context, task *asyncjob.Task) (
 
 // downloadInput 从 R2 下载任务的输入文件（Excel 等）
 func (h *baseHandler) downloadInput(ctx context.Context, task *asyncjob.Task) ([]byte, error) {
-	if h.svcCtx.R2Client == nil {
-		return nil, fmt.Errorf("asynctask: R2 client not configured, cannot download input file")
+	inst, err := h.svcCtx.R2ByKey("sem-web-private")
+	if err != nil {
+		return nil, fmt.Errorf("asynctask: %w, cannot download input file", err)
 	}
 	if task.FileURL == "" {
 		return nil, fmt.Errorf("asynctask: task %d has empty file_url", task.ID)
 	}
-	data, err := helper.DownloadFile(ctx, h.svcCtx.R2Client, h.svcCtx.R2Bucket, task.FileURL)
+	data, err := helper.DownloadFile(ctx, inst.Client, inst.Config.Bucket, task.FileURL)
 	if err != nil {
 		return nil, fmt.Errorf("asynctask: download input file: %w", err)
 	}
@@ -136,10 +138,12 @@ func (h *baseHandler) downloadInput(ctx context.Context, task *asyncjob.Task) ([
 // uploadResult 上传结果文件（错误明细/导出文件）到 R2，返回写入后的 URL
 // 失败时返回空串与错误，调用方决定是否致命失败
 func (h *baseHandler) uploadResult(ctx context.Context, taskID uint64, kind, fileName string, data []byte, contentType string) (string, error) {
-	if h.svcCtx.R2Client == nil {
-		return "", fmt.Errorf("asynctask: R2 client not configured, cannot upload result file")
+	inst, err := h.svcCtx.R2ByKey("sem-web-private")
+	if err != nil {
+		return "", fmt.Errorf("asynctask: %w, cannot upload result file", err)
 	}
-	url, err := helper.UploadFile(ctx, h.svcCtx.R2Client, h.svcCtx.R2Bucket, h.svcCtx.R2PublicBaseURL, kind, fileName, data, contentType)
+	// 私有桶无公开访问域，PublicBaseURL 传空：存库 URL 为对象 key 形式，下载经预签名中转
+	url, err := helper.UploadFile(ctx, inst.Client, inst.Config.Bucket, "", kind, fileName, data, contentType)
 	if err != nil {
 		return "", fmt.Errorf("asynctask: upload result file: %w", err)
 	}
@@ -168,6 +172,20 @@ func (h *baseHandler) finishSuccess(ctx context.Context, taskID uint64, total ui
 		Status:       asyncjob.StatusSuccess,
 		TotalCount:   total,
 		SuccessCount: total,
+	}); err != nil {
+		logx.WithContext(ctx).Errorf("asynctask: finish success for task %d: %v", taskID, err)
+	}
+}
+
+// finishSuccessWithResult 标记任务成功，并写入自定义消息与结果文件 URL
+func (h *baseHandler) finishSuccessWithResult(ctx context.Context, taskID, total, success uint64, msg, resultURL string) {
+	if err := h.svcCtx.AsyncTaskMgr.Finish(ctx, asyncjob.FinishInput{
+		ID:            taskID,
+		Status:        asyncjob.StatusSuccess,
+		TotalCount:    total,
+		SuccessCount:  success,
+		ErrorMessage:  msg,
+		ResultFileURL: resultURL,
 	}); err != nil {
 		logx.WithContext(ctx).Errorf("asynctask: finish success for task %d: %v", taskID, err)
 	}

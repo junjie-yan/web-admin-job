@@ -26,9 +26,14 @@ const (
 	StatusCanceled   = "canceled"   // 已取消
 )
 
-// 业务模块枚举（注册新业务时在此追加）
+// 业务模块枚举（注册新业务时在此追加，同步更新消费端 dispatcher 白名单）
 const (
-	BizAppDetail = "app_detail"
+	BizAppDetail       = "app_detail"           // APP 详情（旧 upsert 导入，保留兼容在途任务）
+	BizAppDetailAdd    = "app_detail_add"       // APP 详情批量新增（只新增不存在数据）
+	BizAppDetailUpdate = "app_detail_update"    // APP 详情批量更新（按 ID 只更新已有数据）
+	BizCoupon          = "coupon"               // 优惠券
+	BizMerchantBase    = "coupon_merchant_base" // 优惠券商家基础
+	BizCategoryBase    = "coupon_category_base" // 优惠券分类基础
 )
 
 // asynq pattern（与 web-admin-job 消费端约定，payload 为 AsyncTaskPayload）

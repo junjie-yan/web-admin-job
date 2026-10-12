@@ -70,7 +70,7 @@
 | `AsynqServer` | `*asynq.Server` | 任务执行 worker |
 | `AsynqPTM` | `*asynq.PeriodicTaskManager` | 动态 cron 调度（配置源：DB） |
 | `AsyncTaskMgr` | `*asyncjob.Manager` | async_task 表持久化管理器 |
-| `R2Client` | `*s3.Client` | R2 文件客户端（未配置时为 nil，文件功能降级禁用） |
+| `R2` | `map[string]*helper.Instance` | R2 实例列表（按桶名取用，job 使用 `sem-web-private`；未配置时为空 map，文件功能降级禁用） |
 
 ## 5. 核心模块
 

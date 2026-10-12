@@ -58,12 +58,11 @@ AsynqConf:
 TaskConf:
   EnableDPTask: true
 
-# Cloudflare R2 配置（与 web-admin 共用同一 bucket，用于上传 Excel/下载 Excel 输入文件）
-R2Conf:
-  AccessKey: "cf6826940756f6d9277f656635f3d180"
-  SecretKey: "98a13f40b231e676ff4fea66e0e606c70a03094d4762c0b8564b00efccb7b174"
-  Region: auto
-  Bucket: "sem-web"
-  Endpoint: "https://21e247f7e3a491fc8e092d59e7bd361c.r2.cloudflarestorage.com"
-  ForcePathStyle: true
-  PublicBaseURL: "" # 为空时返回 /<key>
+# Cloudflare R2 (S3 兼容) 配置：实例列表，业务按桶名（Bucket）取用；job 仅使用私有桶（异步任务文件）
+R2Confs:
+  - AccessKey: "cf6826940756f6d9277f656635f3d180"
+    SecretKey: "98a13f40b231e676ff4fea66e0e606c70a03094d4762c0b8564b00efccb7b174"
+    Region: auto
+    Bucket: "sem-web-private" # 私有桶：异步任务文件（导入原文件/结果文件，下载经预签名 URL）
+    Endpoint: "https://21e247f7e3a491fc8e092d59e7bd361c.r2.cloudflarestorage.com"
+    ForcePathStyle: true

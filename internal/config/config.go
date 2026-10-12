@@ -14,14 +14,15 @@ type Config struct {
 	RedisConf     config.RedisConf
 	AsynqConf     asynq.AsynqConf
 	TaskConf      TaskConf
-	R2Conf        R2Conf
+	R2Confs       []R2Conf
 }
 
 type TaskConf struct {
 	EnableDPTask bool `json:",default=true"`
 }
 
-// R2Conf Cloudflare R2 (S3 兼容) 配置，与 web-admin 的 R2Conf 共用同一 bucket
+// R2Conf Cloudflare R2 (S3 兼容) 配置，R2Confs 列表中的一条实例（与 web-admin 的 r2.Config 对应）
+// 实例标识即 Bucket 名，业务代码按桶名取用
 type R2Conf struct {
 	AccessKey      string `json:",optional"`
 	SecretKey      string `json:",optional"`
@@ -29,6 +30,6 @@ type R2Conf struct {
 	Bucket         string `json:",optional"`
 	Endpoint       string `json:",optional"`
 	ForcePathStyle bool   `json:",optional"`
-	// PublicBaseURL 公共访问域名（拼接最终 URL，不含末尾 /）
+	// PublicBaseURL 公共访问域名（拼接最终 URL，不含末尾 /）；为空时返回 /<key>
 	PublicBaseURL string `json:",optional"`
 }

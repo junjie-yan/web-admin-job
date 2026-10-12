@@ -17,8 +17,8 @@ package svc
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/hibiken/asynq"
 	"github.com/zeromicro/go-zero/core/logx"
 
@@ -30,15 +30,13 @@ import (
 )
 
 type ServiceContext struct {
-	Config          config.Config
-	DB              *ent.Client // web_admin 库 ent 客户端（任务/日志表）
-	SitehubDB       *sql.DB     // sitehub 库原生 SQL 连接（app_detail 批量操作）
-	AsynqServer     *asynq.Server
-	AsynqPTM        *asynq.PeriodicTaskManager
-	AsyncTaskMgr    *asyncjob.Manager // async_task 表管理器
-	R2Client        *s3.Client        // Cloudflare R2 客户端（可能为 nil：未配置时禁用文件下载/上传）
-	R2Bucket        string
-	R2PublicBaseURL string
+	Config       config.Config
+	DB           *ent.Client // web_admin 库 ent 客户端（任务/日志表）
+	SitehubDB    *sql.DB     // sitehub 库原生 SQL 连接（app_detail 批量操作）
+	AsynqServer  *asynq.Server
+	AsynqPTM     *asynq.PeriodicTaskManager
+	AsyncTaskMgr *asyncjob.Manager          // async_task 表管理器
+	R2           map[string]*helper.Instance // R2 实例列表（按桶名取用；未配置时为空 map）
 }
 
 func NewServiceContext(c config.Config) *ServiceContext {
@@ -66,36 +64,39 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		logx.Errorf("asyncjob: ensure table failed: %v", err)
 	}
 
-	// 初始化 R2 客户端（可选，未配置时为 nil）
-	var r2Client *s3.Client
-	if c.R2Conf.AccessKey != "" && c.R2Conf.Bucket != "" {
-		client, err := helper.NewR2Client(context.Background(), helper.R2Config{
-			AccessKey:      c.R2Conf.AccessKey,
-			SecretKey:      c.R2Conf.SecretKey,
-			Region:         c.R2Conf.Region,
-			Bucket:         c.R2Conf.Bucket,
-			Endpoint:       c.R2Conf.Endpoint,
-			ForcePathStyle: c.R2Conf.ForcePathStyle,
-			PublicBaseURL:  c.R2Conf.PublicBaseURL,
+	// 初始化 R2 实例列表（未配置时为空 map，相关功能禁用；Bucket 重复/必填缺失启动报错）
+	r2Cfgs := make([]helper.R2Config, 0, len(c.R2Confs))
+	for _, rc := range c.R2Confs {
+		r2Cfgs = append(r2Cfgs, helper.R2Config{
+			AccessKey:      rc.AccessKey,
+			SecretKey:      rc.SecretKey,
+			Region:         rc.Region,
+			Bucket:         rc.Bucket,
+			Endpoint:       rc.Endpoint,
+			ForcePathStyle: rc.ForcePathStyle,
+			PublicBaseURL:  rc.PublicBaseURL,
 		})
-		if err != nil {
-			logx.Errorf("init r2 client failed: %v, file operations will be disabled", err)
-		} else {
-			r2Client = client
-		}
 	}
+	r2Instances, err := helper.NewInstances(context.Background(), r2Cfgs)
+	logx.Must(err)
 
 	return &ServiceContext{
-		Config:          c,
-		DB:              db,
-		SitehubDB:       sitehubDB,
-		AsynqServer:     c.AsynqConf.WithOriginalRedisConf(c.RedisConf).NewServer(),
-		AsynqPTM:        c.AsynqConf.NewPeriodicTaskManager(periodicconfig.NewEntConfigProvider(db)),
-		AsyncTaskMgr:    asyncTaskMgr,
-		R2Client:        r2Client,
-		R2Bucket:        c.R2Conf.Bucket,
-		R2PublicBaseURL: c.R2Conf.PublicBaseURL,
+		Config:       c,
+		DB:           db,
+		SitehubDB:    sitehubDB,
+		AsynqServer:  c.AsynqConf.WithOriginalRedisConf(c.RedisConf).NewServer(),
+		AsynqPTM:     c.AsynqConf.NewPeriodicTaskManager(periodicconfig.NewEntConfigProvider(db)),
+		AsyncTaskMgr: asyncTaskMgr,
+		R2:           r2Instances,
 	}
+}
+
+// R2ByKey 按桶名取用 R2 实例（job 使用 "sem-web-private" 私有桶）
+func (svcCtx *ServiceContext) R2ByKey(bucket string) (*helper.Instance, error) {
+	if inst, ok := svcCtx.R2[bucket]; ok && inst != nil {
+		return inst, nil
+	}
+	return nil, fmt.Errorf("r2: instance %q not configured", bucket)
 }
 
 // sitehubAdminDB 返回连接到 web_admin 库的 *sql.DB，用于 async_task 表读写

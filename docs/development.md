@@ -11,7 +11,7 @@
 | MySQL | `web_admin` 库（任务配置/状态） | 127.0.0.1:3306, root/root123 |
 | MySQL | `sitehub` 库（app_detail 业务表） | 127.0.0.1:3306 |
 | Redis | asynq 队列 | 127.0.0.1:6379, db0 |
-| R2 | Excel 文件上传/下载（可选，未配置时文件任务降级禁用） | 见 yaml `R2Conf` |
+| R2 | Excel 文件上传/下载（可选，未配置时文件任务降级禁用） | 见 yaml `R2Confs`（实例列表，以 Bucket 名为标识；job 仅使用 `sem-web-private` 私有桶） |
 
 本地推荐用 docker-compose 起 MySQL + Redis（web-admin 仓库有现成编排）。数据库表无需手动建：服务启动时自动初始化。
 

@@ -13,36 +13,65 @@ func BatchInsert(ctx context.Context, db *sql.DB, rows []*Row) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	const placeholders = `(?, ?, NOW(), NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	// 列顺序与 rowValues 返回值一一对应；created_at/updated_at 用 NOW() 生成，
+	// 占位符按 cols 程序化生成，避免手写占位符数量与参数错位
 	cols := []string{
-		"status", "site_id", // created_at/updated_at 由 NOW() 生成
+		"status", "site_id", "created_at", "updated_at",
 		"name", "url", "first_category_id", "second_category_id",
 		"logo", "developer", "version", "content_rating", "price", "min_android",
 		"updated", "downloads", "rating", "review_count", "rating_distribution",
 		"description", "screenshots", "google_play_url", "apple_store_url",
 		"apk_download_url", "apk_version", "apk_size", "apk_updated",
 	}
+	vals := make([]string, len(cols))
+	for i := range vals {
+		if i == 2 || i == 3 { // created_at, updated_at
+			vals[i] = "NOW()"
+		} else {
+			vals[i] = "?"
+		}
+	}
+	rowPlaceholder := "(" + strings.Join(vals, ",") + ")"
+
 	valueStrs := make([]string, 0, len(rows))
 	args := make([]any, 0, len(rows)*len(cols))
 	for _, r := range rows {
-		status := uint8(1)
-		if r.Status != nil {
-			status = *r.Status
-		}
-		valueStrs = append(valueStrs, placeholders)
-		args = append(args,
-			status, r.SiteID,
-			r.Name, r.URL, r.FirstCategoryID, r.SecondCategoryID,
-			r.Logo, r.Developer, r.Version, r.ContentRating, r.Price, r.MinAndroid,
-			r.Updated, r.Downloads, r.Rating, r.ReviewCount, r.RatingDistribution,
-			r.Description, r.Screenshots, r.GooglePlayURL, r.AppleStoreURL,
-			r.APKDownloadURL, r.APKVersion, r.APKSize, r.APKUpdated,
-		)
+		valueStrs = append(valueStrs, rowPlaceholder)
+		args = append(args, rowValues(r)...)
 	}
 	query := fmt.Sprintf("INSERT INTO app_detail (%s) VALUES %s",
 		strings.Join(cols, ","), strings.Join(valueStrs, ","))
 	_, err := db.ExecContext(ctx, query, args...)
 	return err
+}
+
+// rowValues 按 BatchInsert 的 cols 顺序生成单行绑定参数（25 个，与占位符数量一致）；
+// downloads/rating/review_count 为库层 NOT NULL 列，未填写时以零值落库
+func rowValues(r *Row) []any {
+	status := uint8(1)
+	if r.Status != nil {
+		status = *r.Status
+	}
+	var downloads int64
+	if r.Downloads != nil {
+		downloads = *r.Downloads
+	}
+	var rating float64
+	if r.Rating != nil {
+		rating = *r.Rating
+	}
+	var reviewCount int
+	if r.ReviewCount != nil {
+		reviewCount = *r.ReviewCount
+	}
+	return []any{
+		status, r.SiteID,
+		r.Name, r.URL, r.FirstCategoryID, r.SecondCategoryID,
+		r.Logo, r.Developer, r.Version, r.ContentRating, r.Price, r.MinAndroid,
+		r.Updated, downloads, rating, reviewCount, r.RatingDistribution,
+		r.Description, r.Screenshots, r.GooglePlayURL, r.AppleStoreURL,
+		r.APKDownloadURL, r.APKVersion, r.APKSize, r.APKUpdated,
+	}
 }
 
 // FindIDsBySiteAndURL 给定一批 Key，返回库中已存在记录的键 → id 映射
@@ -173,6 +202,46 @@ func FindIDsBySiteAndName(ctx context.Context, db *sql.DB, keys []NameKey) (map[
 			}
 			_ = rows.Close()
 		}
+	}
+	return result, nil
+}
+
+// FindSitesByIDs 批量查询记录 id → site_id 映射（更新模式存在性校验 + 分类延迟解析回填站点用）
+// 内部按 500/批拆分 IN 查询
+func FindSitesByIDs(ctx context.Context, db *sql.DB, ids []uint64) (map[uint64]uint64, error) {
+	result := make(map[uint64]uint64, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	const batchSize = 500
+	for start := 0; start < len(ids); start += batchSize {
+		end := min(start+batchSize, len(ids))
+		batch := ids[start:end]
+		placeholders := make([]string, len(batch))
+		args := make([]any, 0, len(batch))
+		for i, id := range batch {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		q := fmt.Sprintf("SELECT id, site_id FROM app_detail WHERE id IN (%s)", strings.Join(placeholders, ","))
+		rows, err := db.QueryContext(ctx, q, args...)
+		if err != nil {
+			return nil, fmt.Errorf("query app_detail by ids: %w", err)
+		}
+		for rows.Next() {
+			var id, siteID uint64
+			if err := rows.Scan(&id, &siteID); err != nil {
+				_ = rows.Close()
+				return nil, fmt.Errorf("scan app_detail by ids: %w", err)
+			}
+			result[id] = siteID
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("iterate app_detail by ids: %w", err)
+		}
+		_ = rows.Close()
 	}
 	return result, nil
 }

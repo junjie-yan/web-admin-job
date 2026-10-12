@@ -16,7 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-// R2Config R2 连接配置（与 internal/config.R2Conf 字段一一对应）
+// R2Config R2 连接配置（与 internal/config.R2Conf 字段一一对应，对应 R2Confs 列表中的一条实例）
+// 实例标识即 Bucket 名，业务代码按桶名取用
 type R2Config struct {
 	AccessKey      string
 	SecretKey      string
@@ -25,6 +26,29 @@ type R2Config struct {
 	Endpoint       string
 	ForcePathStyle bool
 	PublicBaseURL  string
+}
+
+// Instance 一个已就绪的 R2 实例：S3 客户端 + 完整配置
+type Instance struct {
+	Client *s3.Client
+	Config R2Config
+}
+
+// NewInstances 按 R2Confs 列表构建实例 map（以 Bucket 名为标识）。
+// 空列表返回空 map（未配置即功能禁用）；Bucket 重复或必填项缺失时报错。
+func NewInstances(ctx context.Context, cfgs []R2Config) (map[string]*Instance, error) {
+	out := make(map[string]*Instance, len(cfgs))
+	for i, c := range cfgs {
+		if _, dup := out[c.Bucket]; dup {
+			return nil, fmt.Errorf("r2: duplicate R2Confs[%d] bucket %q", i, c.Bucket)
+		}
+		cli, err := NewR2Client(ctx, c)
+		if err != nil {
+			return nil, fmt.Errorf("r2: init instance %q: %w", c.Bucket, err)
+		}
+		out[c.Bucket] = &Instance{Client: cli, Config: c}
+	}
+	return out, nil
 }
 
 // NewR2Client 创建 S3 兼容客户端（连接 Cloudflare R2）

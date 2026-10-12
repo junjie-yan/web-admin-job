@@ -61,7 +61,7 @@ func ExportHeaders() []string {
 // NULL 值统一输出空字符串
 func ExportRowStrings(r *ExportRow) []string {
 	statusStr := "启用"
-	if r.Status.Valid && r.Status.Int64 == 2 {
+	if r.Status.Valid && r.Status.Int64 != 1 {
 		statusStr = "禁用"
 	}
 	return []string{
