@@ -46,7 +46,7 @@ func BatchInsert(ctx context.Context, db *sql.DB, rows []*Row) error {
 }
 
 // rowValues 按 BatchInsert 的 cols 顺序生成单行绑定参数（26 个，与占位符数量一致）；
-// downloads/rating/review_count 为库层 NOT NULL 列，未填写时以零值落库
+// downloads/rating/review_count/short_desc 为库层 NOT NULL 列，未填写时以零值落库
 func rowValues(r *Row) []any {
 	status := uint8(1)
 	if r.Status != nil {
@@ -64,12 +64,16 @@ func rowValues(r *Row) []any {
 	if r.ReviewCount != nil {
 		reviewCount = *r.ReviewCount
 	}
+	shortDesc := ""
+	if r.ShortDesc != nil {
+		shortDesc = *r.ShortDesc
+	}
 	return []any{
 		status, r.SiteID,
 		r.Name, r.URL, r.FirstCategoryID, r.SecondCategoryID,
 		r.Logo, r.Developer, r.Version, r.ContentRating, r.Price, r.MinAndroid,
 		r.Updated, downloads, rating, reviewCount, r.RatingDistribution,
-		r.Description, r.ShortDesc, r.Screenshots, r.GooglePlayURL, r.AppleStoreURL,
+		r.Description, shortDesc, r.Screenshots, r.GooglePlayURL, r.AppleStoreURL,
 		r.APKDownloadURL, r.APKVersion, r.APKSize, r.APKUpdated,
 	}
 }
