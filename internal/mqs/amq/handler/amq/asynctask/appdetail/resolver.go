@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // Resolver 站点/分类名称→ID 转换器（导入/批量更新用）
@@ -28,6 +29,7 @@ func NewResolver(ctx context.Context, db *sql.DB) *Resolver {
 }
 
 // ResolveSite 站点域名（或纯数字 ID）→ site_id
+// 域名兼容 www. 前缀差异：库内为 www.xxx.com、Excel 填裸域名（或反过来）均可命中
 func (nr *Resolver) ResolveSite(nameOrID string) (uint64, error) {
 	if id, e := strconv.ParseUint(nameOrID, 10, 64); e == nil {
 		return id, nil // 纯数字按 ID 兼容处理
@@ -36,8 +38,19 @@ func (nr *Resolver) ResolveSite(nameOrID string) (uint64, error) {
 		return id, nil
 	}
 	var id uint64
-	err := nr.db.QueryRowContext(nr.ctx,
-		"SELECT id FROM site WHERE domain = ? ORDER BY id LIMIT 1", nameOrID).Scan(&id)
+	candidates := []string{nameOrID}
+	if extra := "www." + nameOrID; extra != nameOrID {
+		candidates = append(candidates, extra)
+	}
+	if bare := strings.TrimPrefix(nameOrID, "www."); bare != nameOrID {
+		candidates = append(candidates, bare)
+	}
+	query, args := "SELECT id FROM site WHERE domain = ?", []any{candidates[0]}
+	for _, c := range candidates[1:] {
+		query += " OR domain = ?"
+		args = append(args, c)
+	}
+	err := nr.db.QueryRowContext(nr.ctx, query+" ORDER BY id LIMIT 1", args...).Scan(&id)
 	if err == sql.ErrNoRows {
 		return 0, fmt.Errorf("站点不存在: %s", nameOrID)
 	}
