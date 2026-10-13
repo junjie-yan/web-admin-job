@@ -34,6 +34,7 @@ const (
 	colAPKSize    = 18 // APK 大小
 	colAPKUpdated = 19 // APK 更新时间
 	colStatus     = 20 // 状态（启用/禁用）
+	colShortDesc  = 21 // 短描述（搜索列表页展示，纯文本；追加在末尾以兼容旧模板）
 )
 
 // ParseMode 行解析模式（决定列 0 的语义与必填校验规则）
@@ -72,6 +73,7 @@ type Row struct {
 	ReviewCount  *int
 	RatingDistribution *string
 	Description *string
+	ShortDesc   *string // 短描述（搜索列表页展示，纯文本）
 	Screenshots *string
 	GooglePlayURL *string
 	AppleStoreURL *string
@@ -184,6 +186,7 @@ func parseSiteRow(rowNo int, row []string, nr *Resolver, mode ParseMode) (*Row, 
 		{colAPKUpdated, &r.APKUpdated},
 		{colLogo, &r.Logo},
 		{colDesc, &r.Description},
+		{colShortDesc, &r.ShortDesc},
 	}
 	for _, c := range strCols {
 		if v := strings.TrimSpace(cell(row, c.col)); v != "" {
@@ -264,6 +267,7 @@ func parseUpdateRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
 		{colAPKUpdated, &r.APKUpdated},
 		{colLogo, &r.Logo},
 		{colDesc, &r.Description},
+		{colShortDesc, &r.ShortDesc},
 	}
 	for _, c := range strCols {
 		if v := strings.TrimSpace(cell(row, c.col)); v != "" {
@@ -306,7 +310,8 @@ func (r *Row) hasUpdatableFields() bool {
 	return r.Name != "" || r.URL != nil || r.FirstCategoryRaw != "" || r.SecondCategoryRaw != "" ||
 		r.Logo != nil || r.Developer != nil || r.Version != nil || r.Price != nil ||
 		r.MinAndroid != nil || r.Downloads != nil || r.Rating != nil || r.ReviewCount != nil ||
-		r.Description != nil || r.GooglePlayURL != nil || r.AppleStoreURL != nil ||
+		r.Description != nil || r.ShortDesc != nil ||
+		r.GooglePlayURL != nil || r.AppleStoreURL != nil ||
 		r.APKDownloadURL != nil || r.APKVersion != nil || r.APKSize != nil || r.APKUpdated != nil ||
 		r.Status != nil
 }

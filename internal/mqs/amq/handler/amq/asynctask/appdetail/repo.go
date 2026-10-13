@@ -20,7 +20,7 @@ func BatchInsert(ctx context.Context, db *sql.DB, rows []*Row) error {
 		"name", "url", "first_category_id", "second_category_id",
 		"logo", "developer", "version", "content_rating", "price", "min_android",
 		"updated", "downloads", "rating", "review_count", "rating_distribution",
-		"description", "screenshots", "google_play_url", "apple_store_url",
+		"description", "short_desc", "screenshots", "google_play_url", "apple_store_url",
 		"apk_download_url", "apk_version", "apk_size", "apk_updated",
 	}
 	vals := make([]string, len(cols))
@@ -45,7 +45,7 @@ func BatchInsert(ctx context.Context, db *sql.DB, rows []*Row) error {
 	return err
 }
 
-// rowValues 按 BatchInsert 的 cols 顺序生成单行绑定参数（25 个，与占位符数量一致）；
+// rowValues 按 BatchInsert 的 cols 顺序生成单行绑定参数（26 个，与占位符数量一致）；
 // downloads/rating/review_count 为库层 NOT NULL 列，未填写时以零值落库
 func rowValues(r *Row) []any {
 	status := uint8(1)
@@ -69,7 +69,7 @@ func rowValues(r *Row) []any {
 		r.Name, r.URL, r.FirstCategoryID, r.SecondCategoryID,
 		r.Logo, r.Developer, r.Version, r.ContentRating, r.Price, r.MinAndroid,
 		r.Updated, downloads, rating, reviewCount, r.RatingDistribution,
-		r.Description, r.Screenshots, r.GooglePlayURL, r.AppleStoreURL,
+		r.Description, r.ShortDesc, r.Screenshots, r.GooglePlayURL, r.AppleStoreURL,
 		r.APKDownloadURL, r.APKVersion, r.APKSize, r.APKUpdated,
 	}
 }
@@ -266,6 +266,7 @@ func UpdateByID(ctx context.Context, db *sql.DB, id uint64, r *Row) error {
 	addIf(&sets, &args, "review_count", r.ReviewCount)
 	addIf(&sets, &args, "rating_distribution", r.RatingDistribution)
 	addIf(&sets, &args, "description", r.Description)
+	addIf(&sets, &args, "short_desc", r.ShortDesc)
 	addIf(&sets, &args, "screenshots", r.Screenshots)
 	addIf(&sets, &args, "google_play_url", r.GooglePlayURL)
 	addIf(&sets, &args, "apple_store_url", r.AppleStoreURL)
@@ -307,7 +308,7 @@ func ListForExport(ctx context.Context, db *sql.DB, siteID uint64, limit, offset
 	q := `SELECT a.id, a.status, a.site_id, s.name, a.name, a.url,
 a.first_category_id, c1.name, a.second_category_id, c2.name,
 a.logo, a.developer, a.version, a.content_rating, a.price, a.min_android, a.updated, a.downloads,
-a.rating, a.review_count, a.description, a.google_play_url, a.apple_store_url,
+a.rating, a.review_count, a.description, a.short_desc, a.google_play_url, a.apple_store_url,
 a.apk_download_url, a.apk_version, a.apk_size, a.apk_updated, a.created_at, a.updated_at
 FROM app_detail a
 LEFT JOIN site s ON s.id = a.site_id
@@ -334,7 +335,7 @@ LEFT JOIN app_category c2 ON c2.id = a.second_category_id`
 			&r.ID, &r.Status, &r.SiteID, &r.SiteName, &r.Name, &r.URL,
 			&r.FirstCategoryID, &r.FirstCategoryName, &r.SecondCategoryID, &r.SecondCategoryName,
 			&r.Logo, &r.Developer, &r.Version, &r.ContentRating, &r.Price, &r.MinAndroid, &r.Updated, &r.Downloads,
-			&r.Rating, &r.ReviewCount, &r.Description, &r.GooglePlayURL, &r.AppleStoreURL,
+			&r.Rating, &r.ReviewCount, &r.Description, &r.ShortDesc, &r.GooglePlayURL, &r.AppleStoreURL,
 			&r.APKDownloadURL, &r.APKVersion, &r.APKSize, &r.APKUpdated, &r.CreatedAt, &r.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan app_detail export: %w", err)

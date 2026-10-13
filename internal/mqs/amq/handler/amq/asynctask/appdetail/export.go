@@ -35,6 +35,7 @@ type ExportRow struct {
 	Rating             sql.NullFloat64
 	ReviewCount        sql.NullInt64
 	Description        sql.NullString
+	ShortDesc          sql.NullString
 	GooglePlayURL      sql.NullString
 	AppleStoreURL      sql.NullString
 	APKDownloadURL     sql.NullString
@@ -51,7 +52,7 @@ func ExportHeaders() []string {
 		"ID", "站点ID", "站点名称", "应用名称", "详情链接",
 		"一级分类ID", "一级分类名称", "二级分类ID", "二级分类名称",
 		"Logo", "开发者", "版本号", "内容评级", "价格", "最低Android",
-		"更新时间", "下载量", "评分", "评论数", "应用描述",
+		"更新时间", "下载量", "评分", "评论数", "应用描述", "短描述",
 		"Google Play链接", "Apple商店链接", "APK下载链接", "APK版本号", "APK大小", "APK更新时间",
 		"状态", "创建时间", "更新时间",
 	}
@@ -85,6 +86,7 @@ func ExportRowStrings(r *ExportRow) []string {
 		nullFloat64Str(r.Rating),
 		nullInt64Str(r.ReviewCount),
 		r.Description.String,
+		r.ShortDesc.String,
 		r.GooglePlayURL.String,
 		r.AppleStoreURL.String,
 		r.APKDownloadURL.String,
