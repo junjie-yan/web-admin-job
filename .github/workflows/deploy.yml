@@ -127,3 +127,8 @@ jobs:
             fi
 
             echo "✅ Deployed core-job $NEW_TAG"
+
+            # 同步本地 :latest 指向新镜像：ghcr 上的 latest 已随本次构建更新，
+            # 但服务器本地不会自动 pull；若本地 latest 长期陈旧，任何以默认 tag
+            # 重建 core-job 的操作都会用回旧代码（历史事故根因之一），此处兜底
+            sudo docker tag "ghcr.io/junjie-yan/web-admin-job:$NEW_TAG" ghcr.io/junjie-yan/web-admin-job:latest
