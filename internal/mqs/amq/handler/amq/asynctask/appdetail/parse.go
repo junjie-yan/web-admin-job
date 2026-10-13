@@ -122,18 +122,13 @@ func parseSiteRow(rowNo int, row []string, nr *Resolver, mode ParseMode) (*Row, 
 	}
 	switch mode {
 	case ParseModeAdd:
-		// 必填项：应用名称、Logo、评分、一级/二级分类、GooglePlay/Apple商店链接（二选一）
+		// 必填项：应用名称、一级分类、GooglePlay/Apple商店链接（二选一）
+		// Logo/评分/二级分类 允许为空（logo/second_category_id 落 NULL，rating 落 0），后期人工补录
 		switch {
 		case name == "":
 			return nil, rowErr(rowNo, "应用名称 必填")
-		case strings.TrimSpace(cell(row, colLogo)) == "":
-			return nil, rowErr(rowNo, "Logo 必填")
-		case strings.TrimSpace(cell(row, colRating)) == "":
-			return nil, rowErr(rowNo, "评分 必填")
 		case strings.TrimSpace(cell(row, colFirstCat)) == "":
 			return nil, rowErr(rowNo, "一级分类 必填")
-		case strings.TrimSpace(cell(row, colSecondCat)) == "":
-			return nil, rowErr(rowNo, "二级分类 必填")
 		case gpStr == "" && asStr == "":
 			return nil, rowErr(rowNo, "GooglePlay链接 与 Apple商店链接 至少填写一项")
 		}

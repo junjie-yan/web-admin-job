@@ -259,8 +259,9 @@ func (h *importAppDetail) process(ctx context.Context, task *asyncjob.Task, rows
 // importAppDetailAdd 批量新增 APP 详情（biz_module=app_detail_add + type=import）
 //
 // 只新增不存在的数据：按 站点+GooglePlay链接（优先）或 站点+Apple商店链接 判重，
-// 已存在的行报失败；必填项校验在解析层完成（应用名称/Logo/评分/一级分类/二级分类必填，
-// 商店链接二选一必填）。详情链接留空按应用名称自动生成 slug，同站点占用时该行报失败。
+// 已存在的行报失败；必填项校验在解析层完成（应用名称/一级分类必填，商店链接二选一必填；
+// Logo/评分/二级分类允许为空，logo/second_category_id 落 NULL、rating 落 0，后期人工补录）。
+// 详情链接留空按应用名称自动生成 slug，同站点占用时该行报失败。
 // 执行完毕生成全量结果文件（成功与失败行都写入，不截断）。
 type importAppDetailAdd struct {
 	baseHandler
