@@ -10,10 +10,10 @@
 //   - 两边共享同一张 async_task 表（web_admin 主库）和同一个 Redis
 package asyncjob
 
-// 任务类型
+// 任务类型（物理动作）；具体业务语义（新增/更新/哪张表）由 BizModule 表达
 const (
-	TypeImport = "import" // 批量导入（upsert：存在则更新，不存在则新增）
-	TypeExport = "export" // 批量导出
+	TypeImport = "import" // 上传 Excel 由消费端解析入库（新增/更新/upsert 由 BizModule 决定）
+	TypeExport = "export" // 查询数据生成 Excel
 )
 
 // 任务状态
@@ -28,9 +28,9 @@ const (
 
 // 业务模块枚举（注册新业务时在此追加，同步更新消费端 dispatcher 白名单）
 const (
-	BizAppDetail       = "app_detail"           // APP 详情（旧 upsert 导入，保留兼容在途任务）
+	BizAppDetail       = "app_detail"           // APP 详情（仅导出；导入请用下方 add / update 两个模块）
 	BizAppDetailAdd    = "app_detail_add"       // APP 详情批量新增（只新增不存在数据）
-	BizAppDetailUpdate = "app_detail_update"    // APP 详情批量更新（按 ID 只更新已有数据）
+	BizAppDetailUpdate = "app_detail_update"    // APP 详情批量更新（按 站点域名+记录ID 只更新已有数据）
 	BizCoupon          = "coupon"               // 优惠券
 	BizMerchantBase    = "coupon_merchant_base" // 优惠券商家基础
 	BizCategoryBase    = "coupon_category_base" // 优惠券分类基础

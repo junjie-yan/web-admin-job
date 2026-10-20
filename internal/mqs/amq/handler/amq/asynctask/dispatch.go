@@ -14,7 +14,7 @@ import (
 )
 
 // taskProcessor 单个业务模块的导入处理器：领取任务后由 ImportDispatcher 路由调用
-// rows 为输入 Excel 的数据行（已跳过表头），实现方自行解析并执行 upsert 与终态写入
+// rows 为输入 Excel 的数据行（已跳过表头），实现方自行解析并执行业务写入与终态写入
 type taskProcessor interface {
 	process(ctx context.Context, task *asyncjob.Task, rows [][]string)
 }
@@ -31,7 +31,6 @@ func NewImportDispatcher(svcCtx *svc.ServiceContext) *importDispatcher {
 	return &importDispatcher{
 		baseHandler: baseHandler{svcCtx: svcCtx},
 		handlers: map[string]taskProcessor{
-			asyncjob.BizAppDetail:       newImportAppDetail(svcCtx),
 			asyncjob.BizAppDetailAdd:    newImportAppDetailAdd(svcCtx),
 			asyncjob.BizAppDetailUpdate: newImportAppDetailUpdate(svcCtx),
 			asyncjob.BizCoupon:          newImportCoupon(svcCtx),

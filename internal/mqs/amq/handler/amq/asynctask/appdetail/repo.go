@@ -152,65 +152,7 @@ func findIDsBySiteAndStrCol(ctx context.Context, db *sql.DB, col string, keys []
 	return result, nil
 }
 
-// FindIDsBySiteAndName 给定一批 NameKey，返回键 → id 列表映射（同站点同名可能对应多条记录，
-// 由调用方决定如何处理：通常唯一时更新，多条时要求改用 store URL 精确定位）
-// 内部按 500/批拆分 IN 查询
-func FindIDsBySiteAndName(ctx context.Context, db *sql.DB, keys []NameKey) (map[NameKey][]uint64, error) {
-	result := make(map[NameKey][]uint64, len(keys))
-	if len(keys) == 0 {
-		return result, nil
-	}
-
-	const batchSize = 500
-	for start := 0; start < len(keys); start += batchSize {
-		end := min(start+batchSize, len(keys))
-		batch := keys[start:end]
-
-		siteToNames := make(map[uint64][]string)
-		for _, k := range batch {
-			if k.Name == "" {
-				continue
-			}
-			siteToNames[k.SiteID] = append(siteToNames[k.SiteID], k.Name)
-		}
-		for siteID, names := range siteToNames {
-			if len(names) == 0 {
-				continue
-			}
-			placeholders := make([]string, len(names))
-			args := make([]any, 0, len(names)+1)
-			args = append(args, siteID)
-			for i, n := range names {
-				placeholders[i] = "?"
-				args = append(args, n)
-			}
-			q := fmt.Sprintf("SELECT id, name FROM app_detail WHERE site_id = ? AND name IN (%s)",
-				strings.Join(placeholders, ","))
-			rows, err := db.QueryContext(ctx, q, args...)
-			if err != nil {
-				return nil, fmt.Errorf("query app_detail by name: %w", err)
-			}
-			for rows.Next() {
-				var id uint64
-				var name string
-				if err := rows.Scan(&id, &name); err != nil {
-					_ = rows.Close()
-					return nil, fmt.Errorf("scan app_detail by name: %w", err)
-				}
-				key := NameKey{SiteID: siteID, Name: name}
-				result[key] = append(result[key], id)
-			}
-			if err := rows.Err(); err != nil {
-				_ = rows.Close()
-				return nil, fmt.Errorf("iterate app_detail by name: %w", err)
-			}
-			_ = rows.Close()
-		}
-	}
-	return result, nil
-}
-
-// FindSitesByIDs 批量查询记录 id → site_id 映射（更新模式存在性校验 + 分类延迟解析回填站点用）
+// FindSitesByIDs 批量查询记录 id → site_id 映射（更新模式存在性校验 + 记录归属站点比对用）
 // 内部按 500/批拆分 IN 查询
 func FindSitesByIDs(ctx context.Context, db *sql.DB, ids []uint64) (map[uint64]uint64, error) {
 	result := make(map[uint64]uint64, len(ids))

@@ -11,10 +11,10 @@ import (
 )
 
 // Excel 模板列索引（列布局与 web-admin 模板一致）
-// 新增/更新模板列 1..20 完全一致，仅列 0 不同：新增为站点域名，更新为记录 ID
+// 批量新增模板列 0 为站点域名；批量更新模板前两列为 站点域名+记录ID，其余列单独定义（见 uCol*）
 const (
-	colSite       = 0  // 新增模板：站点域名（必填）；更新模板：记录 ID（必填）
-	colName       = 1  // 应用名称（upsert 第三优先级定位键；add 必填）
+	colSite       = 0  // 站点域名（必填）
+	colName       = 1  // 应用名称（必填）
 	colURL        = 2  // 详情链接（新增留空按名称生成 slug，更新留空保持原值）
 	colFirstCat   = 3  // 一级分类名称或 ID
 	colSecondCat  = 4  // 二级分类名称或 ID
@@ -37,63 +37,82 @@ const (
 	colShortDesc  = 21 // 短描述（搜索列表页展示，纯文本；追加在末尾以兼容旧模板）
 )
 
-// ParseMode 行解析模式（决定列 0 的语义与必填校验规则）
+// 批量更新模板列索引：前两列为 站点域名 + 记录ID（均必填），列 2..22 与新增模板字段一致（整体后移一位）
+const (
+	uColSite       = 0  // 站点域名（必填，与记录归属比对，防止跨站点误更新）
+	uColID         = 1  // 记录 ID（必填）
+	uColName       = 2  // 应用名称
+	uColURL        = 3  // 详情链接
+	uColFirstCat   = 4  // 一级分类名称或 ID
+	uColSecondCat  = 5  // 二级分类名称或 ID
+	uColLogo       = 6  // Logo 地址
+	uColDeveloper  = 7  // 开发者
+	uColVersion    = 8  // 版本号
+	uColPrice      = 9  // 价格
+	uColMinAndroid = 10 // 最低 Android 版本
+	uColDownloads  = 11 // 下载量
+	uColRating     = 12 // 评分
+	uColReviewCnt  = 13 // 评论数
+	uColDesc       = 14 // 应用描述
+	uColGooglePlay = 15 // Google Play 链接
+	uColAppleStore = 16 // Apple 商店链接
+	uColAPKURL     = 17 // APK 下载链接
+	uColAPKVersion = 18 // APK 版本号
+	uColAPKSize    = 19 // APK 大小
+	uColAPKUpdated = 20 // APK 更新时间
+	uColStatus     = 21 // 状态（启用/禁用）
+	uColShortDesc  = 22 // 短描述
+)
+
+// ParseMode 行解析模式（决定模板列布局与必填校验规则）
 type ParseMode int
 
 const (
-	ParseModeUpsert ParseMode = iota // 旧 upsert 语义：站点列 + 定位键，命中更新/未命中新增（保留兼容在途任务）
-	ParseModeAdd                     // 批量新增：站点列 + 必填项，只新增不存在的数据
-	ParseModeUpdate                  // 批量更新：ID 列 + 任意字段，只更新已有数据
+	ParseModeAdd    ParseMode = iota // 批量新增：站点列 + 必填项，只新增不存在的数据
+	ParseModeUpdate                  // 批量更新：站点域名 + 记录ID 列 + 任意字段，只更新已有数据
 )
 
 // Row 一行 app_detail 数据（与 Excel 字段一一对应）
 // 指针字段：nil 表示该列未填写（更新已存在记录时跳过，新增时使用默认值）
 type Row struct {
 	RowNo int    // Excel 行号（从 2 开始，便于错误定位）
-	ID    uint64 // 更新模式：目标记录 ID（必填）；其他模式为 0
+	ID    uint64 // 更新模式：目标记录 ID（必填）；新增模式为 0
 
-	SiteID uint64 // upsert/add：站点 ID（必填）；update：存在性校验后由库中记录回填
-	Name   string // upsert 第三优先级定位键（add 模式必填）
-	URL    *string // 详情链接；新增留空时由 Handler 按名称生成 slug
+	SiteID     uint64  // 站点 ID：由站点域名列解析（两种模式均必填）；update 模式另用于记录归属校验
+	SiteDomain string  // update 模式：行内填写的站点域名原文（结果文件展示用）
+	Name       string  // 应用名称（add 模式必填）
+	URL        *string // 详情链接；新增留空时由 Handler 按名称生成 slug
 
 	FirstCategoryID  *uint64
 	SecondCategoryID *uint64
-	FirstCategoryRaw  string // update 模式暂存原始填写值，按记录 site_id 延迟解析
-	SecondCategoryRaw string
 
-	Logo        *string
-	Developer   *string
-	Version     *string
-	ContentRating *string
-	Price       *string
-	MinAndroid  *string
-	Updated     *string
-	Downloads   *int64
-	Rating      *float64
-	ReviewCount  *int
+	Logo               *string
+	Developer          *string
+	Version            *string
+	ContentRating      *string
+	Price              *string
+	MinAndroid         *string
+	Updated            *string
+	Downloads          *int64
+	Rating             *float64
+	ReviewCount        *int
 	RatingDistribution *string
-	Description *string
-	ShortDesc   *string // 短描述（搜索列表页展示，纯文本）
-	Screenshots *string
-	GooglePlayURL *string
-	AppleStoreURL *string
-	APKDownloadURL *string
-	APKVersion  *string
-	APKSize     *string
-	APKUpdated  *string
-	Status      *uint8 // 1 启用 / 0 禁用
+	Description        *string
+	ShortDesc          *string // 短描述（搜索列表页展示，纯文本）
+	Screenshots        *string
+	GooglePlayURL      *string
+	AppleStoreURL      *string
+	APKDownloadURL     *string
+	APKVersion         *string
+	APKSize            *string
+	APKUpdated         *string
+	Status             *uint8 // 1 启用 / 0 禁用
 }
 
 // Key 通用定位键（site_id + 字符串列值），用于 store URL 定位与详情链接占用检查
 type Key struct {
 	SiteID uint64
 	URL    string
-}
-
-// NameKey 按名称定位记录的键（site_id + name），第三优先级定位方式（同名可能多条）
-type NameKey struct {
-	SiteID uint64
-	Name   string
 }
 
 // ParseRow 解析单行 Excel 数据为 Row，rowNo 为 Excel 行号（从 2 开始）
@@ -103,11 +122,13 @@ func ParseRow(rowNo int, row []string, nr *Resolver, mode ParseMode) (*Row, erro
 	if mode == ParseModeUpdate {
 		return parseUpdateRow(rowNo, row, nr)
 	}
-	return parseSiteRow(rowNo, row, nr, mode)
+	return parseAddRow(rowNo, row, nr)
 }
 
-// parseSiteRow 解析站点列开头的行（upsert / add 模式，列 0 = 站点域名）
-func parseSiteRow(rowNo int, row []string, nr *Resolver, mode ParseMode) (*Row, error) {
+// parseAddRow 解析批量新增模板的行（列 0 = 站点域名，列 1.. 为字段）
+// 必填项：站点域名、应用名称、一级分类、GooglePlay/Apple商店链接（二选一）；
+// Logo/评分/二级分类 允许为空（logo/second_category_id 落 NULL，rating 落 0），后期人工补录
+func parseAddRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
 	siteStr := strings.TrimSpace(cell(row, colSite))
 	name := strings.TrimSpace(cell(row, colName))
 	urlStr := strings.TrimSpace(cell(row, colURL))
@@ -117,25 +138,15 @@ func parseSiteRow(rowNo int, row []string, nr *Resolver, mode ParseMode) (*Row, 
 	if siteStr == "" && name == "" && urlStr == "" && gpStr == "" && asStr == "" {
 		return nil, nil // 空行
 	}
-	if siteStr == "" {
+	switch {
+	case siteStr == "":
 		return nil, rowErr(rowNo, "站点域名 必填")
-	}
-	switch mode {
-	case ParseModeAdd:
-		// 必填项：应用名称、一级分类、GooglePlay/Apple商店链接（二选一）
-		// Logo/评分/二级分类 允许为空（logo/second_category_id 落 NULL，rating 落 0），后期人工补录
-		switch {
-		case name == "":
-			return nil, rowErr(rowNo, "应用名称 必填")
-		case strings.TrimSpace(cell(row, colFirstCat)) == "":
-			return nil, rowErr(rowNo, "一级分类 必填")
-		case gpStr == "" && asStr == "":
-			return nil, rowErr(rowNo, "GooglePlay链接 与 Apple商店链接 至少填写一项")
-		}
-	default: // upsert：三个定位键至少一项
-		if name == "" && gpStr == "" && asStr == "" {
-			return nil, rowErr(rowNo, "应用名称 / GooglePlay链接 / Apple商店链接 至少填写一项（定位键）")
-		}
+	case name == "":
+		return nil, rowErr(rowNo, "应用名称 必填")
+	case strings.TrimSpace(cell(row, colFirstCat)) == "":
+		return nil, rowErr(rowNo, "一级分类 必填")
+	case gpStr == "" && asStr == "":
+		return nil, rowErr(rowNo, "GooglePlay链接 与 Apple商店链接 至少填写一项")
 	}
 
 	siteID, err := nr.ResolveSite(siteStr)
@@ -148,7 +159,7 @@ func parseSiteRow(rowNo int, row []string, nr *Resolver, mode ParseMode) (*Row, 
 		r.URL = &urlStr
 	}
 
-	// 一级/二级分类（add 模式必填已在上方校验；名称转 ID）
+	// 一级/二级分类（名称转 ID，兼容纯数字 ID）
 	if v := strings.TrimSpace(cell(row, colFirstCat)); v != "" {
 		id, e := nr.ResolveCategory(siteID, 1, v)
 		if e != nil {
@@ -214,7 +225,9 @@ func parseSiteRow(rowNo int, row []string, nr *Resolver, mode ParseMode) (*Row, 
 	return r, nil
 }
 
-// parseUpdateRow 解析 ID 列开头的行（update 模式，列 0 = 记录 ID，列 1..20 与新增模板一致）
+// parseUpdateRow 解析 站点域名+记录ID 开头的行（update 模式）
+// 列 0 = 站点域名（必填），列 1 = 记录 ID（必填），列 2..22 与新增模板字段一致（整体后移一位）
+// 站点域名即时解析为 SiteID：用于分类解析，并由 Handler 与记录实际归属站点比对（不一致则该行失败）
 func parseUpdateRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
 	// 空行判断：所有列均为空
 	allEmpty := true
@@ -228,41 +241,63 @@ func parseUpdateRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
 		return nil, nil
 	}
 
-	idStr := strings.TrimSpace(cell(row, colSite)) // 更新模板列 0 为记录 ID
+	domain := strings.TrimSpace(cell(row, uColSite))
+	if domain == "" {
+		return nil, rowErr(rowNo, "站点域名 必填")
+	}
+	idStr := strings.TrimSpace(cell(row, uColID))
 	if idStr == "" {
-		return nil, rowErr(rowNo, "ID 必填")
+		return nil, rowErr(rowNo, "记录 ID 必填")
 	}
 	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		return nil, rowErr(rowNo, fmt.Sprintf("ID 无效: %s", idStr))
+	if err != nil || id == 0 {
+		return nil, rowErr(rowNo, fmt.Sprintf("记录 ID 无效: %s", idStr))
 	}
 
-	r := &Row{RowNo: rowNo, ID: id, Name: strings.TrimSpace(cell(row, colName))}
-	if v := strings.TrimSpace(cell(row, colURL)); v != "" {
+	siteID, err := nr.ResolveSite(domain)
+	if err != nil {
+		return nil, rowErr(rowNo, err.Error())
+	}
+
+	r := &Row{RowNo: rowNo, ID: id, SiteID: siteID, SiteDomain: domain, Name: strings.TrimSpace(cell(row, uColName))}
+	if v := strings.TrimSpace(cell(row, uColURL)); v != "" {
 		r.URL = &v
 	}
-	// 分类暂存原始值：站点 ID 需待存在性校验回填后才能按站点解析
-	r.FirstCategoryRaw = strings.TrimSpace(cell(row, colFirstCat))
-	r.SecondCategoryRaw = strings.TrimSpace(cell(row, colSecondCat))
+
+	// 一级/二级分类：按行内站点即时解析（名称转 ID，兼容纯数字 ID）
+	if v := strings.TrimSpace(cell(row, uColFirstCat)); v != "" {
+		catID, e := nr.ResolveCategory(siteID, 1, v)
+		if e != nil {
+			return nil, rowErr(rowNo, e.Error())
+		}
+		r.FirstCategoryID = &catID
+	}
+	if v := strings.TrimSpace(cell(row, uColSecondCat)); v != "" {
+		catID, e := nr.ResolveCategory(siteID, 2, v)
+		if e != nil {
+			return nil, rowErr(rowNo, e.Error())
+		}
+		r.SecondCategoryID = &catID
+	}
 
 	// 字符串列（可选）：非空才填写
 	strCols := []struct {
 		col int
 		dst **string
 	}{
-		{colDeveloper, &r.Developer},
-		{colVersion, &r.Version},
-		{colPrice, &r.Price},
-		{colMinAndroid, &r.MinAndroid},
-		{colGooglePlay, &r.GooglePlayURL},
-		{colAppleStore, &r.AppleStoreURL},
-		{colAPKURL, &r.APKDownloadURL},
-		{colAPKVersion, &r.APKVersion},
-		{colAPKSize, &r.APKSize},
-		{colAPKUpdated, &r.APKUpdated},
-		{colLogo, &r.Logo},
-		{colDesc, &r.Description},
-		{colShortDesc, &r.ShortDesc},
+		{uColDeveloper, &r.Developer},
+		{uColVersion, &r.Version},
+		{uColPrice, &r.Price},
+		{uColMinAndroid, &r.MinAndroid},
+		{uColGooglePlay, &r.GooglePlayURL},
+		{uColAppleStore, &r.AppleStoreURL},
+		{uColAPKURL, &r.APKDownloadURL},
+		{uColAPKVersion, &r.APKVersion},
+		{uColAPKSize, &r.APKSize},
+		{uColAPKUpdated, &r.APKUpdated},
+		{uColLogo, &r.Logo},
+		{uColDesc, &r.Description},
+		{uColShortDesc, &r.ShortDesc},
 	}
 	for _, c := range strCols {
 		if v := strings.TrimSpace(cell(row, c.col)); v != "" {
@@ -271,38 +306,38 @@ func parseUpdateRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
 	}
 
 	// 数值列（可选）：解析失败按行级错误处理
-	downloads, err := helper.ParseInt64(cell(row, colDownloads))
+	downloads, err := helper.ParseInt64(cell(row, uColDownloads))
 	if err != nil {
 		return nil, rowErr(rowNo, err.Error())
 	}
 	r.Downloads = downloads
-	rating, err := helper.ParseFloat64(cell(row, colRating))
+	rating, err := helper.ParseFloat64(cell(row, uColRating))
 	if err != nil {
 		return nil, rowErr(rowNo, err.Error())
 	}
 	r.Rating = rating
-	reviewCount, err := helper.ParseInt(cell(row, colReviewCnt))
+	reviewCount, err := helper.ParseInt(cell(row, uColReviewCnt))
 	if err != nil {
 		return nil, rowErr(rowNo, err.Error())
 	}
 	r.ReviewCount = reviewCount
 
 	// 状态（可选）：1 启用 / 0 禁用
-	if v := strings.TrimSpace(cell(row, colStatus)); v != "" {
+	if v := strings.TrimSpace(cell(row, uColStatus)); v != "" {
 		st := parseStatus(v)
 		r.Status = &st
 	}
 
-	// 更新模式要求 ID 之外至少填写一项要更新的字段
+	// 更新模式要求 站点域名+记录ID 之外至少填写一项要更新的字段
 	if !r.hasUpdatableFields() {
-		return nil, rowErr(rowNo, "ID 之外至少填写一项要更新的字段")
+		return nil, rowErr(rowNo, "站点域名与记录 ID 之外至少填写一项要更新的字段")
 	}
 	return r, nil
 }
 
 // hasUpdatableFields 是否填写了至少一项待更新字段（update 模式校验用）
 func (r *Row) hasUpdatableFields() bool {
-	return r.Name != "" || r.URL != nil || r.FirstCategoryRaw != "" || r.SecondCategoryRaw != "" ||
+	return r.Name != "" || r.URL != nil || r.FirstCategoryID != nil || r.SecondCategoryID != nil ||
 		r.Logo != nil || r.Developer != nil || r.Version != nil || r.Price != nil ||
 		r.MinAndroid != nil || r.Downloads != nil || r.Rating != nil || r.ReviewCount != nil ||
 		r.Description != nil || r.ShortDesc != nil ||
@@ -311,29 +346,30 @@ func (r *Row) hasUpdatableFields() bool {
 		r.Status != nil
 }
 
-// ResolveCategories update 模式下按记录的 site_id 解析分类名称/ID
-// （存在性校验回填 SiteID 后调用；解析结果写入 FirstCategoryID/SecondCategoryID）
-func (r *Row) ResolveCategories(nr *Resolver) error {
-	if r.FirstCategoryRaw != "" {
-		id, e := nr.ResolveCategory(r.SiteID, 1, r.FirstCategoryRaw)
-		if e != nil {
-			return e
-		}
-		r.FirstCategoryID = &id
-	}
-	if r.SecondCategoryRaw != "" {
-		id, e := nr.ResolveCategory(r.SiteID, 2, r.SecondCategoryRaw)
-		if e != nil {
-			return e
-		}
-		r.SecondCategoryID = &id
-	}
-	return nil
-}
-
-// RowIdentifier 提取行标识用于结果文件展示：优先应用名称，其次 GooglePlay/Apple 商店链接，最后 ID/站点列
+// RowIdentifier 提取批量新增行的标识用于结果文件展示：优先应用名称，其次 GooglePlay/Apple 商店链接，最后站点列
 func RowIdentifier(row []string) string {
 	for _, col := range []int{colName, colGooglePlay, colAppleStore, colSite} {
+		if v := strings.TrimSpace(cell(row, col)); v != "" {
+			return v
+		}
+	}
+	return "-"
+}
+
+// UpdateRowIdentifier 提取批量更新行的标识用于结果文件展示（更新模板列序）：
+// 站点域名#记录ID 优先；两者缺一时取已填的一项；都缺时依次回退应用名称、商店链接
+func UpdateRowIdentifier(row []string) string {
+	domain := strings.TrimSpace(cell(row, uColSite))
+	id := strings.TrimSpace(cell(row, uColID))
+	switch {
+	case domain != "" && id != "":
+		return domain + "#" + id
+	case domain != "":
+		return domain
+	case id != "":
+		return id
+	}
+	for _, col := range []int{uColName, uColGooglePlay, uColAppleStore} {
 		if v := strings.TrimSpace(cell(row, col)); v != "" {
 			return v
 		}

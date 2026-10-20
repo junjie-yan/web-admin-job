@@ -95,8 +95,8 @@
 |---|---|
 | `common.go` | **baseHandler**：任务生命周期公共方法（claimTask/readInputExcel/finish* 等，所有 Handler 嵌入复用） |
 | `errdetail.go` | 错误明细 Excel 生成并上传 R2（导入/批量更新共用） |
-| `import_app_detail.go` | Excel 批量导入 app_detail（编排：解析 → 查重 → 批量插入） |
-| `batch_update_app_detail.go` | Excel 批量更新 app_detail（编排：解析 → 定位 → 逐条更新） |
+| `dispatch.go` | 导入/导出分发器：asynq 同一 pattern 只能注册一个 handler，按 `task.BizModule` 路由到各业务处理器 |
+| `import_app_detail.go` | app_detail 导入处理器 ×2：批量新增（`app_detail_add`，按站点+商店链接判重）/ 批量更新（`app_detail_update`，按 站点域名+记录ID 定位并校验记录归属站点） |
 | `export_app_detail.go` | 导出 app_detail 为 Excel 上传 R2 |
 | `appdetail/` | **app_detail 业务域子包**：`parse.go` 行解析 / `resolver.go` 名称→ID / `repo.go` SQL 读写 / `export.go` 导出行结构与格式化 |
 
