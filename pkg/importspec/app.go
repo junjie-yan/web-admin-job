@@ -7,7 +7,6 @@ package importspec
 var appVertical = &Vertical{
 	Code:   "app",
 	NameZh: "APP 站点",
-	NameEn: "App Site",
 	Specs: []*Spec{
 		{
 			Module:     "app_detail_add",
@@ -18,7 +17,6 @@ var appVertical = &Vertical{
 			SheetName:  "APP详情批量新增模板",
 			FileBase:   "app_detail_add",
 			NameZh:     "APP详情·批量新增",
-			NameEn:     "App Detail · Batch Add",
 			Columns: []Column{
 				{Header: "站点域名*", Key: "site", Type: TSiteDomain, Required: true},
 				{Header: "应用名称*", Key: "name", Type: TString, Required: true},
@@ -52,7 +50,6 @@ var appVertical = &Vertical{
 			SheetName:  "APP详情批量更新模板",
 			FileBase:   "app_detail_update",
 			NameZh:     "APP详情·批量更新",
-			NameEn:     "App Detail · Batch Update",
 			Columns: []Column{
 				{Header: "站点域名*", Key: "site", Type: TSiteDomain, Required: true},
 				{Header: "记录ID*", Key: "id", Type: TRecordID, Required: true},
@@ -83,7 +80,7 @@ var appVertical = &Vertical{
 	ExportModules: []string{"app_detail"},
 	// PageTypes 对齐 web-api-go cache_keys.go：app_detail 键按 url（非数字 ID），仅支持整类刷新
 	PageTypes: []PageType{
-		{Code: "app_detail", NameZh: "APP详情页", NameEn: "App detail pages", PerID: false},
-		{Code: "categories", NameZh: "分类字典", NameEn: "Categories", PerID: false},
+		{Code: "app_detail", NameZh: "APP详情页", PerID: false},
+		{Code: "categories", NameZh: "分类字典", PerID: false},
 	},
 }

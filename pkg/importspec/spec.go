@@ -55,8 +55,7 @@ type Spec struct {
 	SheetName  string    // 导入模板 sheet 名
 	FileBase   string    // 导入模板文件名主体（自动补 _site 变体后缀与 .xlsx）
 
-	NameZh string // 看板/工作台文案
-	NameEn string
+	NameZh string // 看板/工作台文案（不设英文名：后台无英文场景）
 }
 
 // Headers 返回跨站点模板表头（与 Columns 顺序一致）
@@ -91,7 +90,6 @@ func (s *Spec) ScopedFileBase() string {
 type PageType struct {
 	Code   string
 	NameZh string
-	NameEn string
 	PerID  bool // true=支持单页刷新（page+数字记录 ID）
 }
 
@@ -99,7 +97,6 @@ type PageType struct {
 type Vertical struct {
 	Code          string // app / coupon /（预留 blog）；基础设施固定 site
 	NameZh        string
-	NameEn        string
 	Specs         []*Spec    // 该类型可用的导入模块
 	ExportModules []string   // 支持异步导出的 biz_module 清单（部分模块仅有导出）
 	PageTypes     []PageType // 缓存刷新页面类型清单（工作台刷新 Tab 数据源）
@@ -118,9 +115,9 @@ var Order = []string{"app", "coupon"}
 
 // SitePageTypes 站点基础设施的缓存刷新项（按域名路由，不属于单一站点类型）
 var SitePageTypes = []PageType{
-	{Code: "footer", NameZh: "Footer 页面", NameEn: "Footer pages", PerID: false},
-	{Code: "ads", NameZh: "广告位", NameEn: "Ad slots", PerID: false},
-	{Code: "domain", NameZh: "域名解析", NameEn: "Domain resolution", PerID: false},
+	{Code: "footer", NameZh: "Footer 页面", PerID: false},
+	{Code: "ads", NameZh: "广告位", PerID: false},
+	{Code: "domain", NameZh: "域名解析", PerID: false},
 }
 
 // FindSpec 按 biz_module 查找导入模块声明；找不到返回 nil
@@ -148,6 +145,21 @@ func ImportModules() []string {
 			if s.Operation != "" {
 				mods = append(mods, s.Module)
 			}
+		}
+	}
+	return mods
+}
+
+// VerticalModules 返回指定垂直的导入模块清单（顺序=注册顺序）
+func VerticalModules(vertical string) []string {
+	v := Registry[vertical]
+	if v == nil {
+		return nil
+	}
+	var mods []string
+	for _, s := range v.Specs {
+		if s.Operation != "" {
+			mods = append(mods, s.Module)
 		}
 	}
 	return mods

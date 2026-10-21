@@ -8,7 +8,6 @@ package importspec
 var couponVertical = &Vertical{
 	Code:   "coupon",
 	NameZh: "Coupon站点",
-	NameEn: "Coupon Site",
 	Specs: []*Spec{
 		{
 			Module:     "coupon",
@@ -19,7 +18,6 @@ var couponVertical = &Vertical{
 			SheetName:  "优惠券导入模板",
 			FileBase:   "coupon_import",
 			NameZh:     "Coupon·优惠券",
-			NameEn:     "Coupon",
 			Columns: []Column{
 				{Header: "商店域名*", Key: "merchant_domain", Type: TSiteDomain, Required: true},
 				{Header: "来源ID*", Key: "source_id", Type: TString, Required: true},
@@ -45,7 +43,6 @@ var couponVertical = &Vertical{
 			SheetName:  "优惠券商家导入模板",
 			FileBase:   "coupon_merchant_base_import",
 			NameZh:     "Coupon·商家",
-			NameEn:     "Coupon Merchant",
 			Columns: []Column{
 				{Header: "商店域名*", Key: "merchant_domain", Type: TSiteDomain, Required: true},
 				{Header: "商店名称", Key: "name", Type: TString},
@@ -64,12 +61,12 @@ var couponVertical = &Vertical{
 	ExportModules: []string{"coupon", "coupon_merchant_base", "coupon_category_base"},
 	// PageTypes 对齐 web-api-go cache_keys.go 的 coupon 页面类型
 	PageTypes: []PageType{
-		{Code: "coupons", NameZh: "首页 Top Offers", NameEn: "Home top offers", PerID: false},
-		{Code: "store", NameZh: "商店页", NameEn: "Store pages", PerID: true},
-		{Code: "coupon", NameZh: "优惠券详情页", NameEn: "Coupon detail", PerID: true},
-		{Code: "merchants", NameZh: "商家页", NameEn: "Merchant pages", PerID: false},
-		{Code: "categories", NameZh: "分类列表", NameEn: "Category list", PerID: false},
-		{Code: "category", NameZh: "单分类页", NameEn: "Category page", PerID: true},
-		{Code: "event", NameZh: "活动页", NameEn: "Event page", PerID: true},
+		{Code: "coupons", NameZh: "首页 Top Offers", PerID: false},
+		{Code: "store", NameZh: "商店页", PerID: true},
+		{Code: "coupon", NameZh: "优惠券详情页", PerID: true},
+		{Code: "merchants", NameZh: "商家页", PerID: false},
+		{Code: "categories", NameZh: "分类列表", PerID: false},
+		{Code: "category", NameZh: "单分类页", PerID: true},
+		{Code: "event", NameZh: "活动页", PerID: true},
 	},
 }
