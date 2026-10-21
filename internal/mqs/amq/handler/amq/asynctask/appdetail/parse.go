@@ -125,6 +125,17 @@ func ParseRow(rowNo int, row []string, nr *Resolver, mode ParseMode) (*Row, erro
 	return parseAddRow(rowNo, row, nr)
 }
 
+// ParseRowScoped 解析「站点内变体」模板行：无站点域名列（其余列整体前移一位），
+// pinnedSiteID 为任务预置站点，所有行钉到该站点——运营不可能填错站点，归属校验天然成立
+func ParseRowScoped(rowNo int, row []string, nr *Resolver, pinnedSiteID uint64, mode ParseMode) (*Row, error) {
+	// 前插空占位使列索引与跨站点模板的 col*/uCol* 常量对齐（占位列不会被读取）
+	shifted := append([]string{""}, row...)
+	if mode == ParseModeUpdate {
+		return parseUpdateRowScoped(rowNo, shifted, nr, pinnedSiteID)
+	}
+	return parseAddRowScoped(rowNo, shifted, nr, pinnedSiteID)
+}
+
 // parseAddRow 解析批量新增模板的行（列 0 = 站点域名，列 1.. 为字段）
 // 必填项：站点域名、应用名称、一级分类、GooglePlay/Apple商店链接（二选一）；
 // Logo/评分/二级分类 允许为空（logo/second_category_id 落 NULL，rating 落 0），后期人工补录
@@ -158,19 +169,50 @@ func parseAddRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
 	if urlStr != "" {
 		r.URL = &urlStr
 	}
+	return r, fillAddFields(rowNo, row, nr, r)
+}
 
+// parseAddRowScoped 站点内变体新增解析（shifted 已前插占位列，列索引同 col* 常量）
+func parseAddRowScoped(rowNo int, shifted []string, nr *Resolver, siteID uint64) (*Row, error) {
+	name := strings.TrimSpace(cell(shifted, colName))
+	urlStr := strings.TrimSpace(cell(shifted, colURL))
+	gpStr := strings.TrimSpace(cell(shifted, colGooglePlay))
+	asStr := strings.TrimSpace(cell(shifted, colAppleStore))
+
+	if name == "" && urlStr == "" && gpStr == "" && asStr == "" {
+		return nil, nil // 空行
+	}
+	switch {
+	case name == "":
+		return nil, rowErr(rowNo, "应用名称 必填")
+	case strings.TrimSpace(cell(shifted, colFirstCat)) == "":
+		return nil, rowErr(rowNo, "一级分类 必填")
+	case gpStr == "" && asStr == "":
+		return nil, rowErr(rowNo, "GooglePlay链接 与 Apple商店链接 至少填写一项")
+	}
+
+	r := &Row{RowNo: rowNo, SiteID: siteID, Name: name}
+	if urlStr != "" {
+		r.URL = &urlStr
+	}
+	return r, fillAddFields(rowNo, shifted, nr, r)
+}
+
+// fillAddFields 新增模板公共字段段：分类/字符串列/数值列/状态（列索引同 col* 常量，
+// 跨站点与站点内变体共用；分类按 r.SiteID 解析）
+func fillAddFields(rowNo int, row []string, nr *Resolver, r *Row) error {
 	// 一级/二级分类（名称转 ID，兼容纯数字 ID）
 	if v := strings.TrimSpace(cell(row, colFirstCat)); v != "" {
-		id, e := nr.ResolveCategory(siteID, 1, v)
+		id, e := nr.ResolveCategory(r.SiteID, 1, v)
 		if e != nil {
-			return nil, rowErr(rowNo, e.Error())
+			return rowErr(rowNo, e.Error())
 		}
 		r.FirstCategoryID = &id
 	}
 	if v := strings.TrimSpace(cell(row, colSecondCat)); v != "" {
-		id, e := nr.ResolveCategory(siteID, 2, v)
+		id, e := nr.ResolveCategory(r.SiteID, 2, v)
 		if e != nil {
-			return nil, rowErr(rowNo, e.Error())
+			return rowErr(rowNo, e.Error())
 		}
 		r.SecondCategoryID = &id
 	}
@@ -203,17 +245,17 @@ func parseAddRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
 	// 数值列（可选）：解析失败按行级错误处理
 	downloads, err := helper.ParseInt64(cell(row, colDownloads))
 	if err != nil {
-		return nil, rowErr(rowNo, err.Error())
+		return rowErr(rowNo, err.Error())
 	}
 	r.Downloads = downloads
 	rating, err := helper.ParseFloat64(cell(row, colRating))
 	if err != nil {
-		return nil, rowErr(rowNo, err.Error())
+		return rowErr(rowNo, err.Error())
 	}
 	r.Rating = rating
 	reviewCount, err := helper.ParseInt(cell(row, colReviewCnt))
 	if err != nil {
-		return nil, rowErr(rowNo, err.Error())
+		return rowErr(rowNo, err.Error())
 	}
 	r.ReviewCount = reviewCount
 
@@ -222,22 +264,14 @@ func parseAddRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
 		st := parseStatus(v)
 		r.Status = &st
 	}
-	return r, nil
+	return nil
 }
 
 // parseUpdateRow 解析 站点域名+记录ID 开头的行（update 模式）
 // 列 0 = 站点域名（必填），列 1 = 记录 ID（必填），列 2..22 与新增模板字段一致（整体后移一位）
 // 站点域名即时解析为 SiteID：用于分类解析，并由 Handler 与记录实际归属站点比对（不一致则该行失败）
 func parseUpdateRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
-	// 空行判断：所有列均为空
-	allEmpty := true
-	for _, c := range row {
-		if strings.TrimSpace(c) != "" {
-			allEmpty = false
-			break
-		}
-	}
-	if allEmpty {
+	if allEmptyRow(row) {
 		return nil, nil
 	}
 
@@ -245,6 +279,29 @@ func parseUpdateRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
 	if domain == "" {
 		return nil, rowErr(rowNo, "站点域名 必填")
 	}
+	siteID, err := nr.ResolveSite(domain)
+	if err != nil {
+		return nil, rowErr(rowNo, err.Error())
+	}
+
+	r, err := parseUpdateCommon(rowNo, row, nr, siteID, domain)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// parseUpdateRowScoped 站点内变体更新解析（shifted 已前插占位列：列 1=记录ID，列 2.. 同 uCol* 常量）
+func parseUpdateRowScoped(rowNo int, shifted []string, nr *Resolver, siteID uint64) (*Row, error) {
+	if allEmptyRow(shifted) {
+		return nil, nil
+	}
+	// 站点内变体无域名列，SiteDomain 留空（结果文件标识退化为纯 ID）
+	return parseUpdateCommon(rowNo, shifted, nr, siteID, "")
+}
+
+// parseUpdateCommon 更新模式公共段：记录 ID 解析 + 字段填充 + 至少一项校验
+func parseUpdateCommon(rowNo int, row []string, nr *Resolver, siteID uint64, domain string) (*Row, error) {
 	idStr := strings.TrimSpace(cell(row, uColID))
 	if idStr == "" {
 		return nil, rowErr(rowNo, "记录 ID 必填")
@@ -254,17 +311,12 @@ func parseUpdateRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
 		return nil, rowErr(rowNo, fmt.Sprintf("记录 ID 无效: %s", idStr))
 	}
 
-	siteID, err := nr.ResolveSite(domain)
-	if err != nil {
-		return nil, rowErr(rowNo, err.Error())
-	}
-
 	r := &Row{RowNo: rowNo, ID: id, SiteID: siteID, SiteDomain: domain, Name: strings.TrimSpace(cell(row, uColName))}
 	if v := strings.TrimSpace(cell(row, uColURL)); v != "" {
 		r.URL = &v
 	}
 
-	// 一级/二级分类：按行内站点即时解析（名称转 ID，兼容纯数字 ID）
+	// 一级/二级分类：按行所属站点即时解析（名称转 ID，兼容纯数字 ID）
 	if v := strings.TrimSpace(cell(row, uColFirstCat)); v != "" {
 		catID, e := nr.ResolveCategory(siteID, 1, v)
 		if e != nil {
@@ -328,11 +380,21 @@ func parseUpdateRow(rowNo int, row []string, nr *Resolver) (*Row, error) {
 		r.Status = &st
 	}
 
-	// 更新模式要求 站点域名+记录ID 之外至少填写一项要更新的字段
+	// 更新模式要求 记录ID 之外至少填写一项要更新的字段（站点内变体无域名列，语义相同）
 	if !r.hasUpdatableFields() {
-		return nil, rowErr(rowNo, "站点域名与记录 ID 之外至少填写一项要更新的字段")
+		return nil, rowErr(rowNo, "记录 ID 之外至少填写一项要更新的字段")
 	}
 	return r, nil
+}
+
+// allEmptyRow 全部单元格为空白则返回 true（空行判断）
+func allEmptyRow(row []string) bool {
+	for _, c := range row {
+		if strings.TrimSpace(c) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 // hasUpdatableFields 是否填写了至少一项待更新字段（update 模式校验用）

@@ -55,6 +55,7 @@ type Task struct {
 	Name          string `json:"name"`          // 任务名称
 	Type          string `json:"type"`          // 任务类型
 	BizModule     string `json:"bizModule"`     // 业务模块
+	SiteID        uint64 `json:"siteId"`        // 站点内任务：预置站点 ID（0=跨站点通用模板）
 	Status        string `json:"status"`        // 状态
 	TotalCount    uint64 `json:"totalCount"`    // 总条数
 	SuccessCount  uint64 `json:"successCount"`  // 成功条数
@@ -78,6 +79,7 @@ type CreateInput struct {
 	Name         string // 任务名称
 	Type         string // 任务类型
 	BizModule    string // 业务模块
+	SiteID       uint64 // 站点内任务：预置站点 ID（0=跨站点通用模板）
 	FileURL      string // 输入文件 R2 URL（导出任务可为空）
 	FileName     string // 原始文件名（导出任务可为空）
 	OperatorID   string // 操作人 ID

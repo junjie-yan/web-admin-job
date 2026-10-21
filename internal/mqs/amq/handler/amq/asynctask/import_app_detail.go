@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/zeromicro/go-zero/core/logx"
 
@@ -63,13 +64,20 @@ func (h *importAppDetailAdd) process(ctx context.Context, task *asyncjob.Task, r
 		}
 		end := min(i+batchSize, len(rows))
 
-		// 1. 解析本批数据（行级必填/格式错误直接记失败）
+		// 1. 解析本批数据（行级必填/格式错误直接记失败；
+		//    站点内任务 task.SiteID>0 走变体解析：无站点域名列，行钉到预置站点）
 		var parsed []*appdetail.Row
 		for j := i; j < end; j++ {
 			if len(rows[j]) == 0 {
 				continue // 空行
 			}
-			r, parseErr := appdetail.ParseRow(j+2, rows[j], nr, appdetail.ParseModeAdd)
+			var r *appdetail.Row
+			var parseErr error
+			if task.SiteID > 0 {
+				r, parseErr = appdetail.ParseRowScoped(j+2, rows[j], nr, task.SiteID, appdetail.ParseModeAdd)
+			} else {
+				r, parseErr = appdetail.ParseRow(j+2, rows[j], nr, appdetail.ParseModeAdd)
+			}
 			if parseErr != nil {
 				failCnt++
 				results = append(results, importResultRow{RowNo: j + 2, Identifier: appdetail.RowIdentifier(rows[j]), Message: parseErr.Error()})
@@ -231,7 +239,11 @@ func (h *importAppDetailUpdate) process(ctx context.Context, task *asyncjob.Task
 		} else {
 			failCnt++
 		}
-		results = append(results, importResultRow{RowNo: r.RowNo, Identifier: r.SiteDomain + "#" + strconv.FormatUint(r.ID, 10), OK: ok, Message: msg})
+		ident := r.SiteDomain + "#" + strconv.FormatUint(r.ID, 10)
+		if r.SiteDomain == "" { // 站点内变体：无域名列，标识退化为纯 ID
+			ident = strconv.FormatUint(r.ID, 10)
+		}
+		results = append(results, importResultRow{RowNo: r.RowNo, Identifier: ident, OK: ok, Message: msg})
 	}
 
 	const batchSize = 50
@@ -242,16 +254,27 @@ func (h *importAppDetailUpdate) process(ctx context.Context, task *asyncjob.Task
 		}
 		end := min(i+batchSize, len(rows))
 
-		// 1. 解析本批数据（站点域名+记录ID 必填 + 至少一项更新字段，行级错误直接记失败）
+		// 1. 解析本批数据（站点域名+记录ID 必填 + 至少一项更新字段，行级错误直接记失败；
+		//    站点内任务 task.SiteID>0 走变体解析：无域名列，行钉到预置站点）
 		var parsed []*appdetail.Row
 		for j := i; j < end; j++ {
 			if len(rows[j]) == 0 {
 				continue // 空行
 			}
-			r, parseErr := appdetail.ParseRow(j+2, rows[j], nr, appdetail.ParseModeUpdate)
+			var r *appdetail.Row
+			var parseErr error
+			if task.SiteID > 0 {
+				r, parseErr = appdetail.ParseRowScoped(j+2, rows[j], nr, task.SiteID, appdetail.ParseModeUpdate)
+			} else {
+				r, parseErr = appdetail.ParseRow(j+2, rows[j], nr, appdetail.ParseModeUpdate)
+			}
 			if parseErr != nil {
 				failCnt++
-				results = append(results, importResultRow{RowNo: j + 2, Identifier: appdetail.UpdateRowIdentifier(rows[j]), Message: parseErr.Error()})
+				ident := appdetail.UpdateRowIdentifier(rows[j])
+				if task.SiteID > 0 && len(rows[j]) > 0 && strings.TrimSpace(rows[j][0]) != "" {
+					ident = strings.TrimSpace(rows[j][0]) // 变体首列即记录 ID
+				}
+				results = append(results, importResultRow{RowNo: j + 2, Identifier: ident, Message: parseErr.Error()})
 				continue
 			}
 			if r != nil {

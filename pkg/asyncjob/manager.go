@@ -20,14 +20,15 @@ func NewManager(db *sql.DB) *Manager {
 	return &Manager{db: db, now: func() int64 { return time.Now().Unix() }}
 }
 
-// EnsureTable 幂等创建 async_task 表
+// EnsureTable 幂等创建 async_task 表（含对旧表补 site_id 列的幂等 ALTER）
 func (m *Manager) EnsureTable(ctx context.Context) error {
 	const ddl = `
 CREATE TABLE IF NOT EXISTS async_task (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(255) NOT NULL DEFAULT '' COMMENT '任务名称',
-  type VARCHAR(32) NOT NULL DEFAULT '' COMMENT '任务类型: import/export/batch_update',
+  type VARCHAR(32) NOT NULL DEFAULT '' COMMENT '任务类型: import/export',
   biz_module VARCHAR(64) NOT NULL DEFAULT '' COMMENT '业务模块',
+  site_id BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '站点内任务预置的站点 ID, 0=跨站点通用模板',
   status VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT '状态: pending/processing/success/failed/partial/canceled',
   total_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '总条数',
   success_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '成功条数',
@@ -49,8 +50,23 @@ CREATE TABLE IF NOT EXISTS async_task (
   KEY idx_biz (biz_module, type),
   KEY idx_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='异步任务表';`
-	_, err := m.db.ExecContext(ctx, ddl)
-	return err
+	if _, err := m.db.ExecContext(ctx, ddl); err != nil {
+		return err
+	}
+	// 旧表幂等补列（新表已含；参照 2026-10-20 补丁事故教训：一律幂等写法）
+	var hasCol int
+	if err := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.columns
+		WHERE table_schema = DATABASE() AND table_name = 'async_task' AND column_name = 'site_id'`).Scan(&hasCol); err != nil {
+		return err
+	}
+	if hasCol == 0 {
+		if _, err := m.db.ExecContext(ctx,
+			`ALTER TABLE async_task ADD COLUMN site_id BIGINT UNSIGNED NOT NULL DEFAULT 0
+			 COMMENT '站点内任务预置的站点 ID, 0=跨站点通用模板' AFTER biz_module`); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Create 插入一条 pending 状态的任务，返回新任务 ID
@@ -58,10 +74,10 @@ func (m *Manager) Create(ctx context.Context, in CreateInput) (uint64, error) {
 	now := m.now()
 	res, err := m.db.ExecContext(ctx, `
 INSERT INTO async_task
-  (name, type, biz_module, status, file_url, file_name, operator_id, operator_name, created_at, updated_at)
+  (name, type, biz_module, site_id, status, file_url, file_name, operator_id, operator_name, created_at, updated_at)
 VALUES
-  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		in.Name, in.Type, in.BizModule, StatusPending,
+  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		in.Name, in.Type, in.BizModule, in.SiteID, StatusPending,
 		in.FileURL, in.FileName, in.OperatorID, in.OperatorName,
 		now, now)
 	if err != nil {
@@ -292,10 +308,10 @@ type scanner interface {
 }
 
 const (
-	selectColumns = `SELECT id, name, type, biz_module, status, total_count, success_count, fail_count,
+	selectColumns = `SELECT id, name, type, biz_module, site_id, status, total_count, success_count, fail_count,
 progress, file_url, file_name, result_file_url, error_message, error_detail,
 operator_id, operator_name, started_at, finished_at, created_at, updated_at FROM async_task`
-	listColumns = `SELECT id, name, type, biz_module, status, total_count, success_count, fail_count,
+	listColumns = `SELECT id, name, type, biz_module, site_id, status, total_count, success_count, fail_count,
 progress, file_url, file_name, result_file_url, error_message,
 operator_id, operator_name, started_at, finished_at, created_at, updated_at FROM async_task`
 )
@@ -309,7 +325,7 @@ func scanTaskDetail(s scanner) (*Task, error) {
 		errDetail  sql.NullString
 	)
 	err := s.Scan(
-		&t.ID, &t.Name, &t.Type, &t.BizModule, &t.Status,
+		&t.ID, &t.Name, &t.Type, &t.BizModule, &t.SiteID, &t.Status,
 		&t.TotalCount, &t.SuccessCount, &t.FailCount, &t.Progress,
 		&t.FileURL, &t.FileName, &t.ResultFileURL,
 		&errMsg, &errDetail,
@@ -344,7 +360,7 @@ func scanTaskList(s scanner) (*Task, error) {
 		errMsg     sql.NullString
 	)
 	err := s.Scan(
-		&t.ID, &t.Name, &t.Type, &t.BizModule, &t.Status,
+		&t.ID, &t.Name, &t.Type, &t.BizModule, &t.SiteID, &t.Status,
 		&t.TotalCount, &t.SuccessCount, &t.FailCount, &t.Progress,
 		&t.FileURL, &t.FileName, &t.ResultFileURL, &errMsg,
 		&t.OperatorID, &t.OperatorName,

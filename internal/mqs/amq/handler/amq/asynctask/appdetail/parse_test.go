@@ -359,3 +359,80 @@ func TestUpdateRowIdentifier(t *testing.T) {
 		}
 	}
 }
+
+// scopedRow 构造站点内变体模板的一行（22 列：无站点域名列，其余列整体前移一位）
+func scopedRow(cols int, set map[int]string) []string {
+	row := make([]string, cols)
+	for col, v := range set {
+		if col < len(row) {
+			row[col] = v
+		}
+	}
+	return row
+}
+
+// TestParseRowScopedUpdate 站点内变体更新：首列为记录 ID，行钉到预置站点；
+// 无域名列也可完成 status=1 更新解析（归属由 Handler 按预置站点校验）
+func TestParseRowScopedUpdate(t *testing.T) {
+	db, _ := newFakeDB(t) // 变体更新不查 site 表（站点由任务预置）
+	nr := NewResolver(context.Background(), db)
+
+	r, err := ParseRowScoped(2, scopedRow(22, map[int]string{
+		0:  "123", // 变体列 0 = 记录 ID（uColID-1）
+		20: "1",   // 变体状态列（uColStatus-1）
+	}), nr, 7, ParseModeUpdate)
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if r.ID != 123 || r.SiteID != 7 || r.SiteDomain != "" {
+		t.Fatalf("定位字段不符: ID=%d SiteID=%d SiteDomain=%q", r.ID, r.SiteID, r.SiteDomain)
+	}
+	if r.Status == nil || *r.Status != 1 {
+		t.Fatalf("期望 status=1，实际 %v", r.Status)
+	}
+
+	// UpdateByID 应按 ID 定位并携带 status=1
+	edb, execScript := newFakeDB(t)
+	if err := UpdateByID(context.Background(), edb, r.ID, r); err != nil {
+		t.Fatalf("更新失败: %v", err)
+	}
+	if len(execScript.execs) != 1 || !strings.Contains(execScript.execs[0].query, "WHERE id=?") {
+		t.Fatalf("UPDATE 语句不符: %+v", execScript.execs)
+	}
+	if !reflect.DeepEqual(execScript.execs[0].args, []driver.Value{int64(1), int64(123)}) {
+		t.Fatalf("绑定参数不符: %v", execScript.execs[0].args)
+	}
+}
+
+// TestParseRowScopedAdd 站点内变体新增：无域名列，必填校验仍生效（名称/分类/商店链接）
+func TestParseRowScopedAdd(t *testing.T) {
+	const catQuery = "FROM app_category WHERE site_id = ? AND level = ? AND name = ?"
+	db, _ := newFakeDB(t,
+		scriptedQuery{queryContains: catQuery, args: []driver.Value{int64(7), int64(1), "Games"}, columns: []string{"id"}, rows: [][]driver.Value{{int64(55)}}},
+	)
+	nr := NewResolver(context.Background(), db)
+
+	// 变体列序：0 应用名称 1 详情链接 2 一级分类 ...
+	r, err := ParseRowScoped(2, scopedRow(21, map[int]string{
+		0:  "App",
+		2:  "Games",
+		13: "https://gp", // GooglePlay 链接（colGooglePlay-1）
+	}), nr, 7, ParseModeAdd)
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if r.SiteID != 7 || r.Name != "App" {
+		t.Fatalf("基础字段不符: SiteID=%d Name=%q", r.SiteID, r.Name)
+	}
+	if r.FirstCategoryID == nil || *r.FirstCategoryID != 55 {
+		t.Fatalf("分类应按预置站点解析为 55，实际 %v", r.FirstCategoryID)
+	}
+	if r.GooglePlayURL == nil || *r.GooglePlayURL != "https://gp" {
+		t.Fatalf("GooglePlay 链接列错位，实际 %v", r.GooglePlayURL)
+	}
+
+	// 缺商店链接 → 报错
+	if _, err := ParseRowScoped(3, scopedRow(21, map[int]string{0: "App", 2: "Games"}), nr, 7, ParseModeAdd); err == nil || !strings.Contains(err.Error(), "至少填写一项") {
+		t.Fatalf("期望商店链接必填报错，实际 %v", err)
+	}
+}
