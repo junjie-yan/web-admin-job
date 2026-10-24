@@ -130,13 +130,6 @@ func IsInfraPage(code string) bool {
 	return false
 }
 
-// IsValidPageType 判断 page 是否为 vertical 可刷新的页面类型
-// （垂直自身 PageTypes ∪ 基础设施 SitePageTypes）；供刷新入口做值域校验，
-// 防止拼错的页面类型拼出匹配不到任何键的 pattern、返回假成功
-func IsValidPageType(vertical, page string) bool {
-	return FindPageType(vertical, page) != nil
-}
-
 // FindPageType 按 vertical+page 查找页面类型声明（含 PerID 标记）；
 // 基础设施页面（footer/ads/domain）优先匹配（均不支持单页刷新）。
 // 未注册的 vertical 或 page 返回 nil
