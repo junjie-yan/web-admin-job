@@ -7,20 +7,23 @@ import (
 	"strings"
 )
 
+// couponInsertCols 插入列清单（16 列）与 couponInsertTuple（16 值位：status(?)
+// + created_at/updated_at 由 NOW() 生成 + 13 个数据列(?)）一一对应；
+// 曾经漏写 created_at/updated_at 导致 16≠14、整个 coupon 导入恒报 1136，TestBatchInsertSQLBalance 锁定
+const (
+	couponInsertCols  = "status,created_at,updated_at,merchant_id,merchant_domain,source_id,offer_type," +
+		"code,title,description,discount_text,expired_date,last_verified_at,is_verified,is_exclusive,is_ongoing"
+	couponInsertTuple = `(?, NOW(), NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+)
+
 // BatchInsert 批量插入 coupon 记录（整批一条 INSERT）
 // 成功返回 nil；任意行失败则整批回滚，调用方应降级为逐条插入以定位错误行
 func BatchInsert(ctx context.Context, db *sql.DB, rows []*Row) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	// 16 个值位置：status(?) + NOW() + NOW() + 13 个数据列(?)，与下方 cols 一一对应
-	const placeholders = `(?, NOW(), NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	cols := []string{
-		"status", // created_at/updated_at 由 NOW() 生成
-		"merchant_id", "merchant_domain", "source_id", "offer_type",
-		"code", "title", "description", "discount_text",
-		"expired_date", "last_verified_at", "is_verified", "is_exclusive", "is_ongoing",
-	}
+	const placeholders = couponInsertTuple
+	cols := strings.Split(couponInsertCols, ",")
 	valueStrs := make([]string, 0, len(rows))
 	args := make([]any, 0, len(rows)*len(cols))
 	for _, r := range rows {

@@ -7,6 +7,15 @@ import (
 	"strings"
 )
 
+// merchantInsertCols 插入列清单（13 列）与 merchantInsertTuple（13 值位）一一对应；
+// 曾经漏写 created_at/updated_at 导致 13≠11、coupon_merchant_base 导入恒报 1136，
+// TestBatchInsertSQLBalance 锁定
+const (
+	merchantInsertCols  = "status,created_at,updated_at,domain,name,logo,url,best_discount," +
+		"coupon_codes,total_offers,avg_savings,first_category_id,second_category_id"
+	merchantInsertTuple = `(?, NOW(), NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+)
+
 // BatchInsert 批量插入 coupon_merchant_base 记录（整批一条 INSERT）
 // 成功返回 nil；任意行失败则整批回滚，调用方应降级为逐条插入以定位错误行
 // 调用方需保证：每行 Name 非 nil（新增时名称必填）
@@ -14,13 +23,8 @@ func BatchInsert(ctx context.Context, db *sql.DB, rows []*Row) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	// 13 个值位置：status(?) + NOW() + NOW() + 10 个数据列(?)，与下方 cols 一一对应
-	const placeholders = `(?, NOW(), NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	cols := []string{
-		"status", // created_at/updated_at 由 NOW() 生成
-		"domain", "name", "logo", "url", "best_discount",
-		"coupon_codes", "total_offers", "avg_savings", "first_category_id", "second_category_id",
-	}
+	const placeholders = merchantInsertTuple
+	cols := strings.Split(merchantInsertCols, ",")
 	valueStrs := make([]string, 0, len(rows))
 	args := make([]any, 0, len(rows)*len(cols))
 	for _, r := range rows {
@@ -28,11 +32,19 @@ func BatchInsert(ctx context.Context, db *sql.DB, rows []*Row) error {
 		if r.Status != nil {
 			status = *r.Status
 		}
+		// first/second_category_id 库层 NOT NULL：未填写落 0（与存量「未分类=0」约定一致）
+		firstCatID, secondCatID := uint64(0), uint64(0)
+		if r.FirstCategoryID != nil {
+			firstCatID = *r.FirstCategoryID
+		}
+		if r.SecondCategoryID != nil {
+			secondCatID = *r.SecondCategoryID
+		}
 		valueStrs = append(valueStrs, placeholders)
 		args = append(args,
 			status,
 			r.Domain, r.Name, r.Logo, r.URL, r.BestDiscount,
-			r.CouponCodes, r.TotalOffers, r.AvgSavings, r.FirstCategoryID, r.SecondCategoryID,
+			r.CouponCodes, r.TotalOffers, r.AvgSavings, firstCatID, secondCatID,
 		)
 	}
 	query := fmt.Sprintf("INSERT INTO coupon_merchant_base (%s) VALUES %s",
