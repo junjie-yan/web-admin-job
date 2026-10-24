@@ -42,6 +42,9 @@ const (
 	BizCouponMerchantUpdate = "coupon_merchant_update" // 优惠券商家批量更新
 	BizCouponCategoryAdd    = "coupon_category_add"    // 优惠券分类批量新增
 	BizCouponCategoryUpdate = "coupon_category_update" // 优惠券分类批量更新
+	BizAppCategory          = "app_category"           // APP 分类（仅导出）
+	BizAppReview            = "app_review"             // APP 评论（仅导出）
+	BizSite                 = "site"                   // 站点列表（仅导出）
 	BizSitemap              = "sitemap"                // 站点 sitemap 生成（appfinder 类型站点）
 )
 

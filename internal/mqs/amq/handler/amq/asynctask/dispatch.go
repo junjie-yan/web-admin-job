@@ -105,6 +105,9 @@ func NewExportDispatcher(svcCtx *svc.ServiceContext) *exportDispatcher {
 		baseHandler: baseHandler{svcCtx: svcCtx},
 		providers: map[string]exportProvider{
 			asyncjob.BizAppDetail:    appDetailExportProvider{},
+			asyncjob.BizAppCategory:  appCategoryExportProvider{},
+			asyncjob.BizAppReview:    appReviewExportProvider{},
+			asyncjob.BizSite:         siteExportProvider{},
 			asyncjob.BizCoupon:       couponExportProvider{},
 			asyncjob.BizMerchantBase: merchantBaseExportProvider{},
 			asyncjob.BizCategoryBase: categoryBaseExportProvider{},

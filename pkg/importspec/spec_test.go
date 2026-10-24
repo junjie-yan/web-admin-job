@@ -100,7 +100,7 @@ func TestRegistryModules(t *testing.T) {
 	if !slices.Equal(gotImport, wantImport) {
 		t.Fatalf("导入白名单不一致: got %v want %v", gotImport, wantImport)
 	}
-	wantExport := []string{"app_detail", "coupon", "coupon_category_base", "coupon_merchant_base"}
+	wantExport := []string{"app_category", "app_detail", "app_review", "coupon", "coupon_category_base", "coupon_merchant_base", "site"}
 	gotExport := ExportModules()
 	slices.Sort(gotExport)
 	if !slices.Equal(gotExport, wantExport) {

@@ -138,7 +138,7 @@ var appVertical = &Vertical{
 			},
 		},
 	},
-	ExportModules: []string{"app_detail"},
+	ExportModules: []string{"app_detail", "app_category", "app_review"},
 	// PageTypes 对齐 web-api-go cache_service.go：app_detail 键按 url（非数字 ID），仅支持整类刷新
 	PageTypes: []PageType{
 		{Code: PageAppDetail, NameZh: "APP详情页", PerID: false},

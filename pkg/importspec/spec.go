@@ -227,11 +227,16 @@ func VerticalModules(vertical string) []string {
 	return mods
 }
 
+// InfraExportModules 不挂垂直的站点基础设施导出模块（site 列表导出：
+// 站点管理不属于任何站点类型垂直，同 SitePageTypes 的处理方式）
+var InfraExportModules = []string{"site"}
+
 // ExportModules 返回全部支持异步导出的 biz_module
 func ExportModules() []string {
 	var mods []string
 	for _, v := range Registry {
 		mods = append(mods, v.ExportModules...)
 	}
+	mods = append(mods, InfraExportModules...)
 	return mods
 }
