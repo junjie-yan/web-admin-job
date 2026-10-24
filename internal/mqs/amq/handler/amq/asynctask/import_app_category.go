@@ -64,6 +64,18 @@ func runAppCategory(ctx context.Context, h baseHandler, task *asyncjob.Task, row
 		return nr.ResolveCategory(siteID, 1, nameOrID) // 父分类恒为一级
 	}
 
+	// 站点内变体（工作台导入，task.SiteID>0）：模板无站点域名列，
+	// 前插预置站点域名占位后复用跨站解析，行钉到该站点
+	pinnedDomain := ""
+	if task.SiteID > 0 {
+		d, derr := h.pinnedSiteDomain(ctx, task.SiteID)
+		if derr != nil {
+			h.finishFailed(ctx, task.ID, derr.Error())
+			return
+		}
+		pinnedDomain = d
+	}
+
 	var (
 		okCnt   uint64
 		failCnt uint64
@@ -93,7 +105,13 @@ func runAppCategory(ctx context.Context, h baseHandler, task *asyncjob.Task, row
 			}
 			var r *appcategory.Row
 			var err error
-			if isAdd {
+			if task.SiteID > 0 {
+				if isAdd {
+					r, err = appcategory.ParseAddRowScoped(j+2, rows[j], pinnedDomain, nr.ResolveSite, resolveParent)
+				} else {
+					r, err = appcategory.ParseUpdateRowScoped(j+2, rows[j], pinnedDomain, nr.ResolveSite, resolveParent)
+				}
+			} else if isAdd {
 				r, err = appcategory.ParseAddRow(j+2, rows[j], nr.ResolveSite, resolveParent)
 			} else {
 				r, err = appcategory.ParseUpdateRow(j+2, rows[j], nr.ResolveSite, resolveParent)

@@ -30,6 +30,18 @@ type baseHandler struct {
 	svcCtx *svc.ServiceContext
 }
 
+// pinnedSiteDomain 查询任务预置站点的域名（站点内变体导入前插占位用）：
+// 前插真实域名后复用跨站解析器，行钉到该站点，归属/判重语义与跨站导入完全一致
+func (h *baseHandler) pinnedSiteDomain(ctx context.Context, siteID uint64) (string, error) {
+	var domain string
+	err := h.svcCtx.SitehubDB.QueryRowContext(ctx,
+		`SELECT domain FROM site WHERE id = ?`, siteID).Scan(&domain)
+	if err != nil {
+		return "", fmt.Errorf("站点 %d 不存在或查询失败: %w", siteID, err)
+	}
+	return domain, nil
+}
+
 // claimTypedTask 封装 handler 前置流程：解析 payload → 抢占任务（CAS pending→processing）→ 校验 type。
 // bizModule 的路由由 dispatcher 按白名单分发（见 dispatch.go）。
 //

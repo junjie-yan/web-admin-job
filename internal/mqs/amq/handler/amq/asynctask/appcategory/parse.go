@@ -23,6 +23,9 @@ const (
 	colStatus = 5 // 状态
 )
 
+// update 模板列序与 add 不同：0 站点域名*、1 记录 ID*、2 分类名称、3 父分类、4 URL、5 状态
+const uColName = 2
+
 // Row 一行分类数据
 type Row struct {
 	RowNo      int
@@ -144,7 +147,7 @@ func ParseUpdateRow(
 ) (*Row, error) {
 	siteStr := strings.TrimSpace(cell(row, colSite))
 	idStr := strings.TrimSpace(cell(row, colID))
-	name := strings.TrimSpace(cell(row, colName))
+	name := strings.TrimSpace(cell(row, uColName))
 	parentRaw := strings.TrimSpace(cell(row, colParent))
 	urlStr := strings.TrimSpace(cell(row, colURL))
 	statusStr := strings.TrimSpace(cell(row, colStatus))
@@ -187,4 +190,39 @@ func ParseUpdateRow(
 		return nil, rowErr(rowNo, "站点域名与记录 ID 之外至少填写一项")
 	}
 	return r, nil
+}
+
+// allEmpty 站点内变体行全空判断（该模板无站点列，空行=所有单元格为空）
+func allEmpty(row []string) bool {
+	for _, c := range row {
+		if strings.TrimSpace(c) != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// ParseAddRowScoped 解析「站点内变体」新增行：模板无站点域名列，domain 为任务
+// 预置站点的域名——前插占位后完整复用跨站解析，行钉到该站点（归属/判重语义不变）
+func ParseAddRowScoped(
+	rowNo int, row []string, domain string,
+	resolveSite func(string) (uint64, error),
+	resolveParent func(siteID uint64, nameOrID string) (uint64, error),
+) (*Row, error) {
+	if allEmpty(row) {
+		return nil, nil
+	}
+	return ParseAddRow(rowNo, append([]string{domain}, row...), resolveSite, resolveParent)
+}
+
+// ParseUpdateRowScoped 解析「站点内变体」更新行（语义同 ParseAddRowScoped）
+func ParseUpdateRowScoped(
+	rowNo int, row []string, domain string,
+	resolveSite func(string) (uint64, error),
+	resolveParent func(siteID uint64, nameOrID string) (uint64, error),
+) (*Row, error) {
+	if allEmpty(row) {
+		return nil, nil
+	}
+	return ParseUpdateRow(rowNo, append([]string{domain}, row...), resolveSite, resolveParent)
 }

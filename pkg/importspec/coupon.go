@@ -21,7 +21,7 @@ var couponVertical = &Vertical{
 			FileBase:   "coupon_import",
 			NameZh:     "Coupon·优惠券",
 			Columns: []Column{
-				{Header: "商店域名*", Key: "merchant_domain", Type: TSiteDomain, Required: true},
+				{Header: "商店域名*", Key: "merchant_domain", Type: TString, Required: true},
 				{Header: "来源ID*", Key: "source_id", Type: TString, Required: true},
 				{Header: "类型", Key: "type", Type: TString},
 				{Header: "优惠Code", Key: "code", Type: TString},
@@ -48,7 +48,7 @@ var couponVertical = &Vertical{
 			FileBase:   "coupon_merchant_base_import",
 			NameZh:     "Coupon·商家",
 			Columns: []Column{
-				{Header: "商店域名*", Key: "merchant_domain", Type: TSiteDomain, Required: true},
+				{Header: "商店域名*", Key: "merchant_domain", Type: TString, Required: true},
 				{Header: "商店名称", Key: "name", Type: TString},
 				{Header: "Logo", Key: "logo", Type: TString},
 				{Header: "主页URL", Key: "url", Type: TString},
