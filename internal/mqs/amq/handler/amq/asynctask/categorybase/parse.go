@@ -96,6 +96,10 @@ func ParseAddRow(
 	if name == "" {
 		return nil, rowErr(rowNo, "分类名称 必填")
 	}
+	// url 列 NOT NULL + UNIQUE(uk_cc_url)：必填且需唯一，空值/重复均无法落库
+	if urlStr == "" {
+		return nil, rowErr(rowNo, "来源URL 必填（不可与其它分类重复）")
+	}
 	level, err := ParseLevel(levelStr)
 	if err != nil {
 		return nil, rowErr(rowNo, err.Error())

@@ -30,6 +30,13 @@ type baseHandler struct {
 	svcCtx *svc.ServiceContext
 }
 
+// deferredRow 同批父子依赖场景下延后重试的原始行（见 import_app_category /
+// import_coupon_category：新增二级分类的父分类可能在本批更早行、尚未落库）
+type deferredRow struct {
+	rowNo int
+	row   []string
+}
+
 // pinnedSiteDomain 查询任务预置站点的域名（站点内变体导入前插占位用）：
 // 前插真实域名后复用跨站解析器，行钉到该站点，归属/判重语义与跨站导入完全一致
 func (h *baseHandler) pinnedSiteDomain(ctx context.Context, siteID uint64) (string, error) {

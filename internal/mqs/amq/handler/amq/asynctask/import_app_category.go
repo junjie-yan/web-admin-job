@@ -92,6 +92,9 @@ func runAppCategory(ctx context.Context, h baseHandler, task *asyncjob.Task, row
 
 	var rowsToApply []*appcategory.Row
 	seenKey := make(map[string]int) // 批内去重键 → 行号
+	// 同批父子依赖：新增二级分类的父分类可能在本批更早行、尚未落库，
+	// 解析期查库会报「父分类不存在」；此类 add 失败行延后到 apply 完成后重试一轮
+	var deferredAdds []deferredRow
 
 	for i := 0; i < len(rows); i += 50 {
 		if h.checkCanceled(ctx, task.ID) {
@@ -117,6 +120,10 @@ func runAppCategory(ctx context.Context, h baseHandler, task *asyncjob.Task, row
 				r, err = appcategory.ParseUpdateRow(j+2, rows[j], nr.ResolveSite, resolveParent)
 			}
 			if err != nil {
+				if isAdd {
+					deferredAdds = append(deferredAdds, deferredRow{rowNo: j + 2, row: rows[j]})
+					continue
+				}
 				failCnt++
 				results = append(results, importResultRow{RowNo: j + 2, Identifier: categoryIdentFor(rows[j]), Message: err.Error()})
 				continue
@@ -212,6 +219,41 @@ func runAppCategory(ctx context.Context, h baseHandler, task *asyncjob.Task, row
 			continue
 		}
 		result(r.RowNo, ident, true, "更新成功")
+		fl.add(siteApp, r.SiteID, pageCategories)
+	}
+
+	// 同批父子依赖重试：此时本批一级分类已全部落库，延后的二级分类行重新解析即可命中父分类；
+	// 仍失败的（必填缺失等永久错误）此时才计入失败
+	for _, d := range deferredAdds {
+		var r *appcategory.Row
+		var err error
+		if task.SiteID > 0 {
+			r, err = appcategory.ParseAddRowScoped(d.rowNo, d.row, pinnedDomain, nr.ResolveSite, resolveParent)
+		} else {
+			r, err = appcategory.ParseAddRow(d.rowNo, d.row, nr.ResolveSite, resolveParent)
+		}
+		if err != nil {
+			failCnt++
+			results = append(results, importResultRow{RowNo: d.rowNo, Identifier: categoryIdentFor(d.row), Message: err.Error()})
+			continue
+		}
+		if r == nil {
+			continue
+		}
+		existing, err := repo.FindByName(ctx, r.SiteID, r.Level, r.Name)
+		if err != nil {
+			result(d.rowNo, categoryIdent(r), false, fmt.Sprintf("查询失败 %v", err))
+			continue
+		}
+		if existing != nil {
+			result(d.rowNo, categoryIdent(r), false, "同站点同层级下分类名已存在")
+			continue
+		}
+		if err := repo.Insert(ctx, r); err != nil {
+			result(d.rowNo, categoryIdent(r), false, fmt.Sprintf("新增失败 %v", err))
+			continue
+		}
+		result(d.rowNo, categoryIdent(r), true, "新增成功")
 		fl.add(siteApp, r.SiteID, pageCategories)
 	}
 

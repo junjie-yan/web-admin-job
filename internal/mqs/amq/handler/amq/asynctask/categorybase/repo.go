@@ -58,7 +58,7 @@ func (r *Repo) FindByName(ctx context.Context, level int, name string) (*struct 
 	return &struct{ ID uint64 }{ID: id}, nil
 }
 
-// Insert 插入分类（新增；icon_url/url 可空串）
+// Insert 插入分类（新增；url 列 NOT NULL + UNIQUE(uk_cc_url)，调用方须保证非空）
 func (r *Repo) Insert(ctx context.Context, row *Row) error {
 	icon, url := "", ""
 	if row.IconURL != nil {

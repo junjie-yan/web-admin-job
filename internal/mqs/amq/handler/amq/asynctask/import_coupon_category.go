@@ -57,12 +57,24 @@ func runCouponCategory(ctx context.Context, h baseHandler, task *asyncjob.Task, 
 	}
 
 	repo := categorybase.Repo{DB: h.svcCtx.SitehubDB}
+	// 父分类按一级解析（名称未命中报错，纯数字 ID 由 ParseParent 兜底）
+	resolveParent := func(nameOrID string) (uint64, error) {
+		if found, e := repo.FindByName(ctx, 1, nameOrID); e == nil && found != nil {
+			return found.ID, nil
+		} else if e != nil {
+			return 0, e
+		}
+		return 0, fmt.Errorf("一级分类不存在: %s", nameOrID)
+	}
 
 	var (
 		okCnt   uint64
 		failCnt uint64
 		results []importResultRow
 	)
+	// 同批父子依赖：新增二级分类的父分类可能在本批更早行、尚未落库，
+	// 解析期查库会报「一级分类不存在」；此类 add 失败行延后到 apply 完成后重试一轮
+	var deferredAdds []deferredRow
 	result := func(rowNo int, ident string, ok bool, msg string) {
 		if ok {
 			okCnt++
@@ -88,27 +100,15 @@ func runCouponCategory(ctx context.Context, h baseHandler, task *asyncjob.Task, 
 			var r *categorybase.Row
 			var err error
 			if isAdd {
-				r, err = categorybase.ParseAddRow(j+2, rows[j], func(nameOrID string) (uint64, error) {
-					// 父分类按一级解析
-					if found, e := repo.FindByName(ctx, 1, nameOrID); e == nil && found != nil {
-						return found.ID, nil
-					} else if e != nil {
-						return 0, e
-					}
-					// 纯数字 ID 由 ParseParent 兜底；此处名称未命中返回 0 让上层报错
-					return 0, fmt.Errorf("一级分类不存在: %s", nameOrID)
-				})
+				r, err = categorybase.ParseAddRow(j+2, rows[j], resolveParent)
 			} else {
-				r, err = categorybase.ParseUpdateRow(j+2, rows[j], func(nameOrID string) (uint64, error) {
-					if found, e := repo.FindByName(ctx, 1, nameOrID); e == nil && found != nil {
-						return found.ID, nil
-					} else if e != nil {
-						return 0, e
-					}
-					return 0, fmt.Errorf("一级分类不存在: %s", nameOrID)
-				})
+				r, err = categorybase.ParseUpdateRow(j+2, rows[j], resolveParent)
 			}
 			if err != nil {
+				if isAdd {
+					deferredAdds = append(deferredAdds, deferredRow{rowNo: j + 2, row: rows[j]})
+					continue
+				}
 				failCnt++
 				results = append(results, importResultRow{RowNo: j + 2, Identifier: firstNonEmpty(rows[j]), Message: err.Error()})
 				continue
@@ -193,6 +193,35 @@ func runCouponCategory(ctx context.Context, h baseHandler, task *asyncjob.Task, 
 			continue
 		}
 		result(r.RowNo, ident, true, "更新成功")
+		fl.add(siteCoupon, 0, pageCategories, pageCategory)
+	}
+
+	// 同批父子依赖重试：此时本批一级分类已全部落库，延后的二级分类行重新解析即可命中父分类；
+	// 仍失败的（必填缺失等永久错误）此时才计入失败
+	for _, d := range deferredAdds {
+		r, err := categorybase.ParseAddRow(d.rowNo, d.row, resolveParent)
+		if err != nil {
+			failCnt++
+			results = append(results, importResultRow{RowNo: d.rowNo, Identifier: firstNonEmpty(d.row), Message: err.Error()})
+			continue
+		}
+		if r == nil {
+			continue
+		}
+		existing, err := repo.FindByName(ctx, r.Level, r.Name)
+		if err != nil {
+			result(d.rowNo, r.Name, false, fmt.Sprintf("查询失败 %v", err))
+			continue
+		}
+		if existing != nil {
+			result(d.rowNo, r.Name, false, "同层级下分类名已存在")
+			continue
+		}
+		if err := repo.Insert(ctx, r); err != nil {
+			result(d.rowNo, r.Name, false, fmt.Sprintf("新增失败 %v", err))
+			continue
+		}
+		result(d.rowNo, r.Name, true, "新增成功")
 		fl.add(siteCoupon, 0, pageCategories, pageCategory)
 	}
 
