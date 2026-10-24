@@ -128,6 +128,10 @@ func (m *Manager) List(ctx context.Context, f ListFilter) (*ListResult, error) {
 		where = append(where, "type = ?")
 		args = append(args, f.Type)
 	}
+	if f.SiteID > 0 {
+		where = append(where, "site_id = ?")
+		args = append(args, f.SiteID)
+	}
 	if f.OperatorID != "" {
 		where = append(where, "operator_id = ?")
 		args = append(args, f.OperatorID)

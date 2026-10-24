@@ -12,8 +12,9 @@ package asyncjob
 
 // 任务类型（物理动作）；具体业务语义（新增/更新/哪张表）由 BizModule 表达
 const (
-	TypeImport = "import" // 上传 Excel 由消费端解析入库（新增/更新/upsert 由 BizModule 决定）
-	TypeExport = "export" // 查询数据生成 Excel
+	TypeImport  = "import"  // 上传 Excel 由消费端解析入库（新增/更新/upsert 由 BizModule 决定）
+	TypeExport  = "export"  // 查询数据生成 Excel
+	TypeSitemap = "sitemap" // 生成站点 sitemap 并上传 R2 公开桶（无输入/结果文件）
 )
 
 // 任务状态
@@ -28,19 +29,28 @@ const (
 
 // 业务模块枚举（注册新业务时在此追加，同步更新消费端 dispatcher 白名单）
 const (
-	BizAppDetail       = "app_detail"           // APP 详情（仅导出；导入请用下方 add / update 两个模块）
-	BizAppDetailAdd    = "app_detail_add"       // APP 详情批量新增（只新增不存在数据）
-	BizAppDetailUpdate = "app_detail_update"    // APP 详情批量更新（按 站点域名+记录ID 只更新已有数据）
-	BizCoupon          = "coupon"               // 优惠券
-	BizMerchantBase    = "coupon_merchant_base" // 优惠券商家基础
-	BizCategoryBase    = "coupon_category_base" // 优惠券分类基础
+	BizAppDetail            = "app_detail"             // APP 详情（仅导出；导入请用下方 add / update / upsert 模块）
+	BizAppDetailAdd         = "app_detail_add"         // APP 详情批量新增（只新增不存在数据）
+	BizAppDetailUpdate      = "app_detail_update"      // APP 详情批量更新（按 站点域名+记录ID 只更新已有数据）
+	BizAppDetailUpsert      = "app_detail_upsert"      // APP 详情批量导入（按商店链接定位：存在更新非空字段，不存在新增）
+	BizCoupon               = "coupon"                 // 优惠券
+	BizMerchantBase         = "coupon_merchant_base"   // 优惠券商家基础（upsert，保留兼容）
+	BizCategoryBase         = "coupon_category_base"   // 优惠券分类基础（仅导出）
+	BizAppCategoryAdd       = "app_category_add"       // APP 分类批量新增
+	BizAppCategoryUpdate    = "app_category_update"    // APP 分类批量更新
+	BizCouponMerchantAdd    = "coupon_merchant_add"    // 优惠券商家批量新增
+	BizCouponMerchantUpdate = "coupon_merchant_update" // 优惠券商家批量更新
+	BizCouponCategoryAdd    = "coupon_category_add"    // 优惠券分类批量新增
+	BizCouponCategoryUpdate = "coupon_category_update" // 优惠券分类批量更新
+	BizSitemap              = "sitemap"                // 站点 sitemap 生成（appfinder 类型站点）
 )
 
 // asynq pattern（与 web-admin-job 消费端约定，payload 为 AsyncTaskPayload）
 // 放在公开包中以便 web-admin API 生产端引用，避免引用 internal 包
 const (
-	PatternImport = "async_task:import" // 批量导入
-	PatternExport = "async_task:export" // 批量导出
+	PatternImport  = "async_task:import"  // 批量导入
+	PatternExport  = "async_task:export"  // 批量导出
+	PatternSitemap = "async_task:sitemap" // sitemap 生成
 )
 
 // AsyncTaskPayload asynq 队列消息的 payload（两端共享）
@@ -91,6 +101,7 @@ type ListFilter struct {
 	Status     string
 	BizModule  string
 	Type       string
+	SiteID     uint64
 	OperatorID string
 	Keyword    string
 	Page       uint64

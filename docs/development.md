@@ -11,7 +11,7 @@
 | MySQL | `web_admin` 库（任务配置/状态） | 127.0.0.1:3306, root/root123 |
 | MySQL | `sitehub` 库（app_detail 业务表） | 127.0.0.1:3306 |
 | Redis | asynq 队列 | 127.0.0.1:6379, db0 |
-| R2 | Excel 文件上传/下载（可选，未配置时文件任务降级禁用） | 见 yaml `R2Confs`（实例列表，以 Bucket 名为标识；job 仅使用 `sem-web-private` 私有桶） |
+| R2 | 任务文件与 SEO 资源上传/下载（可选，未配置时文件任务降级禁用） | 见 yaml `R2Confs`（实例列表，以 Bucket 名为标识：`sem-web-private` 私有桶存任务输入/结果文件，`sem-web` 公开桶存站点 sitemap 等公开资源） |
 
 本地推荐用 docker-compose 起 MySQL + Redis（web-admin 仓库有现成编排）。数据库表无需手动建：服务启动时自动初始化。
 
@@ -63,7 +63,7 @@ go run ./tmp/inspector   # 示例：清理 asynq 队列遗留任务
 
 ## 4. 新功能开发流程
 
-### 4.1 新增异步批量任务（最常见，5 步）
+### 4.1 新增异步批量任务（最常见）
 
 以"导入 app_detail"为参照模板：
 
@@ -72,12 +72,22 @@ go run ./tmp/inspector   # 示例：清理 asynq 队列遗留任务
 ```go
 // 业务模块枚举追加
 const BizMyThing = "my_thing"
-// pattern 追加
+// pattern 仅在新增物理动作时追加（现有 import/export/sitemap 三条已覆盖绝大多数场景）
 const PatternMyThingDo = "async_task:my_thing_do"
 // 如需新任务类型，追加 TypeXXX 常量
 ```
 
-**Step 2 — 写 Handler**（`internal/mqs/amq/handler/amq/asynctask/my_thing.go`）：
+**Step 2 — 声明 spec**（`pkg/importspec/app.go|coupon.go`，导入模块必做）：
+
+```go
+// 挂到对应垂直的 Specs：Module（=BizModule）、Entity/EntityZh（工作台分组）、
+// Operation（add/update/upsert）、SiteScoped、Columns（列序=模板列序，golden 测试锁定）
+```
+
+同实体已有 add/update 时，旧 upsert 模块被元数据接口 hasSplit 规则自动隐藏；
+spec 变更须与 web-admin 联合发版（job 打 tag → web-admin 升 go.mod 依赖，两仓红线）。
+
+**Step 3 — 写 Handler**（`internal/mqs/amq/handler/amq/asynctask/my_thing.go`）：
 
 ```go
 type MyThingHandler struct{ baseHandler }
@@ -86,33 +96,38 @@ func NewMyThingHandler(svcCtx *svc.ServiceContext) *MyThingHandler {
     return &MyThingHandler{baseHandler{svcCtx: svcCtx}}
 }
 
-func (h *MyThingHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
-    task, retry := h.claimTask(ctx, t, asyncjob.BizMyThing, asyncjob.TypeXXX) // 解析+抢占+校验
-    if retry != nil { return retry }   // 基础设施错误 → 返回触发重试
-    if task == nil { return nil }      // 被抢占/取消/biz 不符 → 已处理，不重试
-    // 3. 分批处理：每批 checkCanceled → 执行 → reportProgress
-    // 4. h.finishSuccess / finishPartial / finishFailed 写终态
-    return nil
+func (h *MyThingHandler) process(ctx context.Context, task *asyncjob.Task, rows [][]string) {
+    fl := newCacheFlusher(h.svcCtx)   // 写后自动缓存失效（见 Step 5）
+    defer fl.flush(ctx)
+    // 解析（业务子包）→ 批内去重 → 判重/存在校验 → 落库
+    // 成功路径 fl.add(siteXxx, siteID, pageXxx...) 聚合刷新范围
+    // 结果文件 + finishSuccess / finishPartial
 }
 ```
 
 业务域逻辑（Excel 行解析/名称解析/SQL）收敛到 `asynctask/<业务模块>/` 子包（参照 `appdetail/`），handler 只做编排。
 完整骨架说明见 [common.go](../internal/mqs/amq/handler/amq/asynctask/common.go) 包注释。
 
-**Step 3 — 注册路由**（[mqtask/register.go](../internal/mqs/amq/task/mqtask/register.go)）：
+**Step 4 — 注册分发器**（`dispatch.go` 的 handlers map，导入模块）或
+[mqtask/register.go](../internal/mqs/amq/task/mqtask/register.go)（新 pattern）：
 
 ```go
-mux.Handle(pattern.PatternMyThingDo, asynctask.NewMyThingHandler(m.svcCtx))
+asyncjob.BizMyThing: newImportMyThing(svcCtx),   // dispatch.go
+mux.Handle(pattern.PatternMyThingDo, asynctask.NewMyThingHandler(m.svcCtx))  // register.go，仅新 pattern
 ```
 
-**Step 4 — 生产端对接**（web-admin API 仓库）：
+**Step 5 — 生产端对接**（web-admin API 仓库）：
 
 ```go
 taskID, _ := mgr.Create(ctx, asyncjob.CreateInput{Name: "...", Type: "...", BizModule: asyncjob.BizMyThing, ...})
-client.Enqueue(asynq.NewTask(asyncjob.PatternMyThingDo, mustJSON(asyncjob.AsyncTaskPayload{TaskID: taskID})))
+client.Enqueue(asynq.NewTask(asyncjob.PatternImport, mustJSON(asyncjob.AsyncTaskPayload{TaskID: taskID})))
 ```
 
-**Step 5 — 管理后台**：新增任务列表/进度页（读写 async_task 表，字段说明见 architecture.md §6.2）。
+**Step 6 — 管理后台**：现有看板/元数据接口由 spec 驱动零改动；仅需在 web-admin 仓库
+`deploy/sql/patch-site-type-config.sql` 补 `site_type_module` 配置行（启用/排序）与 casbin（若新增专用提交端点）。
+
+> **非 Excel 任务变体**（参照 `sitemap.go`）：无输入文件，`claimTypedTask` 领取任务后直接查库执行、
+> 分步 `reportProgress`，结果直传 R2 固定 key（`helper.PutBytesToKey`）。
 
 ### 4.2 新增定时任务
 

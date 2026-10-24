@@ -34,6 +34,9 @@ func newImportAppDetailAdd(svcCtx *svc.ServiceContext) *importAppDetailAdd {
 // process 处理已领取的批量新增任务（rows 为输入 Excel 数据行，已跳过表头）
 func (h *importAppDetailAdd) process(ctx context.Context, task *asyncjob.Task, rows [][]string) {
 	logger := logx.WithContext(ctx)
+	// 聚合本任务成功写入的站点范围，结束时统一刷新 C 端缓存（失败仅记日志）
+	fl := newCacheFlusher(h.svcCtx)
+	defer fl.flush(ctx)
 
 	total := uint64(len(rows))
 	if total == 0 {
@@ -48,6 +51,7 @@ func (h *importAppDetailAdd) process(ctx context.Context, task *asyncjob.Task, r
 		results []importResultRow
 	)
 	addOK := func(r *appdetail.Row, msg string) {
+		fl.add(siteApp, r.SiteID, pageAppDetail)
 		okCnt++
 		results = append(results, importResultRow{RowNo: r.RowNo, Identifier: addIdentifier(r), OK: true, Message: msg})
 	}
@@ -220,6 +224,9 @@ func newImportAppDetailUpdate(svcCtx *svc.ServiceContext) *importAppDetailUpdate
 // process 处理已领取的批量更新任务（rows 为输入 Excel 数据行，已跳过表头）
 func (h *importAppDetailUpdate) process(ctx context.Context, task *asyncjob.Task, rows [][]string) {
 	logger := logx.WithContext(ctx)
+	// 聚合本任务成功写入的站点范围，结束时统一刷新 C 端缓存（失败仅记日志）
+	fl := newCacheFlusher(h.svcCtx)
+	defer fl.flush(ctx)
 
 	total := uint64(len(rows))
 	if total == 0 {
@@ -235,6 +242,7 @@ func (h *importAppDetailUpdate) process(ctx context.Context, task *asyncjob.Task
 	)
 	updResult := func(r *appdetail.Row, ok bool, msg string) {
 		if ok {
+			fl.add(siteApp, r.SiteID, pageAppDetail)
 			okCnt++
 		} else {
 			failCnt++
@@ -336,6 +344,229 @@ func (h *importAppDetailUpdate) process(ctx context.Context, task *asyncjob.Task
 	}
 
 	h.finishWithImportResult(ctx, task.ID, total, okCnt, failCnt, "更新完成：成功 %d", results)
+}
+
+// importAppDetailUpsert 批量导入 APP 详情（biz_module=app_detail_upsert + type=import）
+//
+// 一体化入口：按 站点+GooglePlay链接（优先）或 站点+Apple商店链接 定位——
+// 已存在 → 仅更新填写的非空字段（详情链接留空保持原值，不参与 slug 生成）；
+// 不存在 → 走新增路径（详情链接留空按应用名称生成 slug，撞车行报失败）。
+// 解析与新增模板同列布局（全量字段），执行完毕生成全量结果文件。
+type importAppDetailUpsert struct {
+	baseHandler
+}
+
+// newImportAppDetailUpsert 创建批量导入处理器（由 importDispatcher 路由调用）
+func newImportAppDetailUpsert(svcCtx *svc.ServiceContext) *importAppDetailUpsert {
+	return &importAppDetailUpsert{baseHandler{svcCtx: svcCtx}}
+}
+
+// process 处理已领取的批量导入任务（rows 为输入 Excel 数据行，已跳过表头）
+func (h *importAppDetailUpsert) process(ctx context.Context, task *asyncjob.Task, rows [][]string) {
+	logger := logx.WithContext(ctx)
+	// 聚合本任务成功写入的站点范围，结束时统一刷新 C 端缓存（失败仅记日志）
+	fl := newCacheFlusher(h.svcCtx)
+	defer fl.flush(ctx)
+
+	total := uint64(len(rows))
+	if total == 0 {
+		h.finishSuccess(ctx, task.ID, 0)
+		return
+	}
+
+	nr := appdetail.NewResolver(ctx, h.svcCtx.SitehubDB)
+	var (
+		okCnt   uint64
+		failCnt uint64
+		results []importResultRow
+	)
+	res := func(r *appdetail.Row, ok bool, msg string) {
+		if ok {
+			fl.add(siteApp, r.SiteID, pageAppDetail)
+			okCnt++
+		} else {
+			failCnt++
+		}
+		results = append(results, importResultRow{RowNo: r.RowNo, Identifier: addIdentifier(r), OK: ok, Message: msg})
+	}
+
+	const batchSize = 50
+	for i := 0; i < len(rows); i += batchSize {
+		if h.checkCanceled(ctx, task.ID) {
+			h.finishCanceled(ctx, task.ID)
+			return
+		}
+		end := min(i+batchSize, len(rows))
+
+		// 1. 解析本批数据（列布局与新增模板一致；站点内任务走变体解析）
+		var parsed []*appdetail.Row
+		for j := i; j < end; j++ {
+			if len(rows[j]) == 0 {
+				continue // 空行
+			}
+			var r *appdetail.Row
+			var parseErr error
+			if task.SiteID > 0 {
+				r, parseErr = appdetail.ParseRowScoped(j+2, rows[j], nr, task.SiteID, appdetail.ParseModeAdd)
+			} else {
+				r, parseErr = appdetail.ParseRow(j+2, rows[j], nr, appdetail.ParseModeAdd)
+			}
+			if parseErr != nil {
+				failCnt++
+				results = append(results, importResultRow{RowNo: j + 2, Identifier: appdetail.RowIdentifier(rows[j]), Message: parseErr.Error()})
+				continue
+			}
+			if r != nil {
+				parsed = append(parsed, r)
+			}
+		}
+
+		// 2. 批内按定位键去重（保留首条，后续行报失败）
+		seenLoc := make(map[string]int, len(parsed))
+		var candidates []*appdetail.Row
+		for _, r := range parsed {
+			k := addLocKey(r)
+			if firstNo, dup := seenLoc[k]; dup {
+				res(r, false, fmt.Sprintf("与第 %d 行定位键重复", firstNo))
+				continue
+			}
+			seenLoc[k] = r.RowNo
+			candidates = append(candidates, r)
+		}
+
+		// 3. 库内定位：按 商店链接（gp 优先 / as 兜底）拆分出 更新行 与 新增行
+		var gpKeys, asKeys []appdetail.Key
+		for _, r := range candidates {
+			switch {
+			case r.GooglePlayURL != nil && *r.GooglePlayURL != "":
+				gpKeys = append(gpKeys, appdetail.Key{SiteID: r.SiteID, URL: *r.GooglePlayURL})
+			case r.AppleStoreURL != nil && *r.AppleStoreURL != "":
+				asKeys = append(asKeys, appdetail.Key{SiteID: r.SiteID, URL: *r.AppleStoreURL})
+			}
+		}
+		gpIDs, err := appdetail.FindIDsBySiteAndGooglePlayURL(ctx, h.svcCtx.SitehubDB, gpKeys)
+		if err != nil {
+			logger.Error(err)
+			h.finishFailed(ctx, task.ID, fmt.Sprintf("查询 app_detail 失败: %v", err))
+			return
+		}
+		asIDs, err := appdetail.FindIDsBySiteAndAppleStoreURL(ctx, h.svcCtx.SitehubDB, asKeys)
+		if err != nil {
+			logger.Error(err)
+			h.finishFailed(ctx, task.ID, fmt.Sprintf("查询 app_detail 失败: %v", err))
+			return
+		}
+		var updates, inserts []*appdetail.Row
+		for _, r := range candidates {
+			var existID uint64
+			switch {
+			case r.GooglePlayURL != nil && *r.GooglePlayURL != "":
+				existID = gpIDs[appdetail.Key{SiteID: r.SiteID, URL: *r.GooglePlayURL}]
+			case r.AppleStoreURL != nil && *r.AppleStoreURL != "":
+				existID = asIDs[appdetail.Key{SiteID: r.SiteID, URL: *r.AppleStoreURL}]
+			}
+			if existID > 0 {
+				r.ID = existID
+				updates = append(updates, r)
+			} else {
+				inserts = append(inserts, r)
+			}
+		}
+
+		// 4. 新增行：详情链接留空按应用名称生成 slug
+		for _, r := range inserts {
+			if r.URL == nil && r.Name != "" {
+				if u := slugify.Path("app", r.Name); u != "" {
+					r.URL = &u
+				}
+			}
+		}
+
+		// 5. 详情链接占用检查（库内 + 批内，覆盖更新行与新增行；更新行撞他人记录报失败）
+		urlKeys := make([]appdetail.Key, 0, len(updates)+len(inserts))
+		for _, r := range updates {
+			if r.URL != nil {
+				urlKeys = append(urlKeys, appdetail.Key{SiteID: r.SiteID, URL: *r.URL})
+			}
+		}
+		for _, r := range inserts {
+			if r.URL != nil {
+				urlKeys = append(urlKeys, appdetail.Key{SiteID: r.SiteID, URL: *r.URL})
+			}
+		}
+		existURL, err := appdetail.FindIDsBySiteAndURL(ctx, h.svcCtx.SitehubDB, urlKeys)
+		if err != nil {
+			logger.Error(err)
+			h.finishFailed(ctx, task.ID, fmt.Sprintf("查询 app_detail 失败: %v", err))
+			return
+		}
+		seenURL := make(map[appdetail.Key]bool, len(updates)+len(inserts))
+		var finalUpdates, finalInserts []*appdetail.Row
+		for _, r := range updates {
+			if r.URL == nil {
+				finalUpdates = append(finalUpdates, r)
+				continue
+			}
+			k := appdetail.Key{SiteID: r.SiteID, URL: *r.URL}
+			if owner := existURL[k]; owner != 0 && owner != r.ID {
+				res(r, false, fmt.Sprintf("详情链接 %s 已被同站点其他记录占用", *r.URL))
+				continue
+			}
+			if seenURL[k] {
+				res(r, false, fmt.Sprintf("批内详情链接重复 %s", *r.URL))
+				continue
+			}
+			seenURL[k] = true
+			finalUpdates = append(finalUpdates, r)
+		}
+		for _, r := range inserts {
+			if r.URL == nil {
+				finalInserts = append(finalInserts, r)
+				continue
+			}
+			k := appdetail.Key{SiteID: r.SiteID, URL: *r.URL}
+			if _, occupied := existURL[k]; occupied {
+				res(r, false, fmt.Sprintf("详情链接 %s 已被同站点其他记录占用", *r.URL))
+				continue
+			}
+			if seenURL[k] {
+				res(r, false, fmt.Sprintf("批内详情链接重复 %s", *r.URL))
+				continue
+			}
+			seenURL[k] = true
+			finalInserts = append(finalInserts, r)
+		}
+
+		// 6. 更新行：仅更新填写的非空字段（详情链接留空保持原值）
+		for _, r := range finalUpdates {
+			if e := appdetail.UpdateByID(ctx, h.svcCtx.SitehubDB, r.ID, r); e != nil {
+				res(r, false, fmt.Sprintf("更新失败 %v", e))
+				continue
+			}
+			res(r, true, "更新成功")
+		}
+
+		// 7. 新增行：整批插入（失败降级逐条以定位错误行）
+		if len(finalInserts) > 0 {
+			if e := appdetail.BatchInsert(ctx, h.svcCtx.SitehubDB, finalInserts); e != nil {
+				for _, r := range finalInserts {
+					if ie := appdetail.BatchInsert(ctx, h.svcCtx.SitehubDB, []*appdetail.Row{r}); ie != nil {
+						res(r, false, ie.Error())
+						continue
+					}
+					res(r, true, "新增成功")
+				}
+			} else {
+				for _, r := range finalInserts {
+					res(r, true, "新增成功")
+				}
+			}
+		}
+
+		h.reportProgress(ctx, task.ID, total, okCnt, failCnt, calcProgress(uint64(len(results)), total), "")
+	}
+
+	h.finishWithImportResult(ctx, task.ID, total, okCnt, failCnt, "导入完成：成功 %d", results)
 }
 
 // finishWithImportResult 上传全量导入结果文件并写终态（全成功 success / 有失败 partial）

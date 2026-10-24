@@ -56,8 +56,20 @@ AsynqConf:
 TaskConf:
   EnableDPTask: true
 
-# Cloudflare R2 (S3 兼容) 配置：实例列表，业务按桶名（Bucket）取用；job 仅使用私有桶（异步任务文件）
+# C 端站点 API（web-api-go）：导入成功后调用其缓存刷新接口（容器网络服务名）
+WebAPIConf:
+  BaseURL: http://sem-web-api:3210
+  # RefreshToken: "" # 缓存刷新共享令牌（X-Refresh-Token），与 web-api-go security.cache_refresh_token 同值
+
+# Cloudflare R2 (S3 兼容) 配置：实例列表，业务按桶名（Bucket）取用；私有桶存异步任务文件，公开桶存站点 SEO 等公开资源
 R2Confs:
+  - AccessKey: "cf6826940756f6d9277f656635f3d180"
+    SecretKey: "98a13f40b231e676ff4fea66e0e606c70a03094d4762c0b8564b00efccb7b174"
+    Region: auto
+    Bucket: "sem-web" # 公开桶：站点 sitemap 等 SEO 公开资源（nginx 直接回源）
+    Endpoint: "https://21e247f7e3a491fc8e092d59e7bd361c.r2.cloudflarestorage.com"
+    ForcePathStyle: true
+    PublicBaseURL: "" # 为空时返回 /<key>
   - AccessKey: "cf6826940756f6d9277f656635f3d180"
     SecretKey: "98a13f40b231e676ff4fea66e0e606c70a03094d4762c0b8564b00efccb7b174"
     Region: auto

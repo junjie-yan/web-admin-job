@@ -31,10 +31,17 @@ func NewImportDispatcher(svcCtx *svc.ServiceContext) *importDispatcher {
 	return &importDispatcher{
 		baseHandler: baseHandler{svcCtx: svcCtx},
 		handlers: map[string]taskProcessor{
-			asyncjob.BizAppDetailAdd:    newImportAppDetailAdd(svcCtx),
-			asyncjob.BizAppDetailUpdate: newImportAppDetailUpdate(svcCtx),
-			asyncjob.BizCoupon:          newImportCoupon(svcCtx),
-			asyncjob.BizMerchantBase:    newImportMerchantBase(svcCtx),
+			asyncjob.BizAppDetailAdd:         newImportAppDetailAdd(svcCtx),
+			asyncjob.BizAppDetailUpdate:      newImportAppDetailUpdate(svcCtx),
+			asyncjob.BizAppDetailUpsert:      newImportAppDetailUpsert(svcCtx),
+			asyncjob.BizCoupon:               newImportCoupon(svcCtx),
+			asyncjob.BizMerchantBase:         newImportMerchantBase(svcCtx),
+			asyncjob.BizAppCategoryAdd:       newImportAppCategoryAdd(svcCtx),
+			asyncjob.BizAppCategoryUpdate:    newImportAppCategoryUpdate(svcCtx),
+			asyncjob.BizCouponMerchantAdd:    newImportCouponMerchantAdd(svcCtx),
+			asyncjob.BizCouponMerchantUpdate: newImportCouponMerchantUpdate(svcCtx),
+			asyncjob.BizCouponCategoryAdd:    newImportCouponCategoryAdd(svcCtx),
+			asyncjob.BizCouponCategoryUpdate: newImportCouponCategoryUpdate(svcCtx),
 		},
 	}
 }

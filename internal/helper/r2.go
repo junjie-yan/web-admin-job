@@ -136,6 +136,34 @@ func buildAsyncObjectKey(kind, ext string) string {
 	return fmt.Sprintf("async/%s/%s/%s%s", kind, dateStr, name, ext)
 }
 
+// PutBytesToKey 上传字节流到 R2 的指定 key（覆盖写），返回资源 URL。
+// 用于固定路径资源（如 sitemap: site/<domain>/sitemap/sitemap.xml），
+// publicBaseURL 为空时返回 "/key"。
+func PutBytesToKey(ctx context.Context, client *s3.Client, bucket, key, publicBaseURL, contentType string, data []byte) (string, error) {
+	if client == nil {
+		return "", fmt.Errorf("r2: client is nil")
+	}
+	if key == "" {
+		return "", fmt.Errorf("r2: empty key")
+	}
+	if len(data) == 0 {
+		return "", fmt.Errorf("r2: empty data")
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	_, err := client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(bucket),
+		Key:         aws.String(key),
+		Body:        bytes.NewReader(data),
+		ContentType: aws.String(contentType),
+	})
+	if err != nil {
+		return "", fmt.Errorf("r2: put object %q: %w", key, err)
+	}
+	return buildR2URL(key, publicBaseURL), nil
+}
+
 // fileExt 从文件名提取扩展名（含 .），没有则返回空串
 func fileExt(name string) string {
 	idx := strings.LastIndex(name, ".")

@@ -15,6 +15,15 @@ type Config struct {
 	AsynqConf     asynq.AsynqConf
 	TaskConf      TaskConf
 	R2Confs       []R2Conf
+	WebAPIConf    WebAPIConf // C 端站点 API（web-api-go），导入成功后调用其缓存刷新接口
+}
+
+// WebAPIConf 前端站点 API 服务配置（与 web-admin 的 webapi.Config 对应；job 不反向依赖 web-admin，独立声明）
+type WebAPIConf struct {
+	// BaseURL 服务地址，如 http://127.0.0.1:3210
+	BaseURL string `json:",default=http://127.0.0.1:3210"`
+	// RefreshToken 缓存刷新接口共享令牌，与 web-api-go security.cache_refresh_token 同值；未启用时留空
+	RefreshToken string `json:",optional"`
 }
 
 type TaskConf struct {

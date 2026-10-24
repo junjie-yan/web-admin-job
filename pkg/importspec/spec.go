@@ -49,6 +49,8 @@ type Spec struct {
 	Module     string    // biz_module，全局唯一（白名单/dispatcher/看板共用）
 	Table      string    // 目标表名（文档/排查用）
 	Operation  Operation // 导入语义；空串表示该模块无导入（仅登记用于看板等）
+	Entity     string    // 业务实体标识（工作台按实体分组；同实体存在 add/update 时 upsert 自动隐藏）
+	EntityZh   string    // 实体中文名（工作台分组行展示）
 	SiteScoped bool      // true=跨站点模板含站点域名列；站点内变体（siteId>0）去掉该列
 	Columns    []Column  // 跨站点模板列规格（列序=Excel 列序，单一事实源）
 	Locators   []string  // 新增/upsert 判重定位键优先级（字段 Key）
@@ -86,16 +88,79 @@ func (s *Spec) ScopedFileBase() string {
 	return s.FileBase + "_site"
 }
 
-// PageType 缓存刷新清单项；Code 值域对齐 web-api-go cache_keys.go 的页面类型常量
+// PageType 缓存刷新清单项；Code 统一引用本包页面类型常量（唯一事实源，
+// job flusher / web-admin 刷新逻辑编译期引用同一批常量，杜绝值域漂移）
 type PageType struct {
 	Code   string
 	NameZh string
 	PerID  bool // true=支持单页刷新（page+数字记录 ID）
 }
 
+// 页面类型 Code 常量（值域与 web-api-go cache_service.go 的缓存键约定对齐；
+// web-api-go 不依赖本仓，由上述注释 + 测试锁定一致性）
+const (
+	PageAppDetail  = "app_detail" // APP 详情列表页（键按 url，无 id 段，仅整类刷新）
+	PageCoupons    = "coupons"    // coupon 首页 Top Offers
+	PageCoupon     = "coupon"     // 单优惠券页
+	PageMerchants  = "merchants"  // 商家列表页
+	PageStore      = "store"      // 单商家商店页
+	PageCategories = "categories" // 分类列表页
+	PageCategory   = "category"   // 单分类页
+	PageEvent      = "event"      // 活动页
+	PageFooter     = "footer"     // 站点基础设施：footer 页面
+	PageAds        = "ads"        // 站点基础设施：广告位
+	PageDomain     = "domain"     // 站点基础设施：域名解析（全局键，siteID=0）
+)
+
+// 站点垂直 Code 常量（Registry 键，site.type 值域的管理面子集）
+const (
+	SiteTypeApp    = "app"
+	SiteTypeCoupon = "coupon"
+	SiteTypeInfra  = "site" // 基础设施垂直名（非站点类型）
+)
+
+// IsInfraPage 判断页面类型是否属于站点基础设施（缓存键挂在 site=site 垂直，
+// 与站点自身类型无关）；供刷新逻辑推导垂直归属，替代各处字面 map
+func IsInfraPage(code string) bool {
+	for _, pt := range SitePageTypes {
+		if pt.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+// IsValidPageType 判断 page 是否为 vertical 可刷新的页面类型
+// （垂直自身 PageTypes ∪ 基础设施 SitePageTypes）；供刷新入口做值域校验，
+// 防止拼错的页面类型拼出匹配不到任何键的 pattern、返回假成功
+func IsValidPageType(vertical, page string) bool {
+	return FindPageType(vertical, page) != nil
+}
+
+// FindPageType 按 vertical+page 查找页面类型声明（含 PerID 标记）；
+// 基础设施页面（footer/ads/domain）优先匹配（均不支持单页刷新）。
+// 未注册的 vertical 或 page 返回 nil
+func FindPageType(vertical, page string) *PageType {
+	for i := range SitePageTypes {
+		if SitePageTypes[i].Code == page {
+			return &SitePageTypes[i]
+		}
+	}
+	v := Registry[vertical]
+	if v == nil {
+		return nil
+	}
+	for i := range v.PageTypes {
+		if v.PageTypes[i].Code == page {
+			return &v.PageTypes[i]
+		}
+	}
+	return nil
+}
+
 // Vertical 一种站点类型的能力声明（site.type 的值域）
 type Vertical struct {
-	Code          string // app / coupon /（预留 blog）；基础设施固定 site
+	Code          string // app / coupon；基础设施固定 site
 	NameZh        string
 	Specs         []*Spec    // 该类型可用的导入模块
 	ExportModules []string   // 支持异步导出的 biz_module 清单（部分模块仅有导出）
@@ -103,6 +168,10 @@ type Vertical struct {
 }
 
 // Registry 站点垂直注册表（编译期构建，唯一事实源）
+//
+// 管理面值域 = 本表键集 ∪ {site 基础设施}。web-api-go 另有 blog 垂直的 C 端完整
+// 实现（internal/site/blog），但管理面未开通（无导入模块/页面类型清单/工作台）；
+// 开通时在 Registry 注册 blog 垂直并升级本包 tag 即可，禁止绕过本表硬编码类型。
 var Registry = map[string]*Vertical{
 	"app":    appVertical,
 	"coupon": couponVertical,
@@ -115,9 +184,9 @@ var Order = []string{"app", "coupon"}
 
 // SitePageTypes 站点基础设施的缓存刷新项（按域名路由，不属于单一站点类型）
 var SitePageTypes = []PageType{
-	{Code: "footer", NameZh: "Footer 页面", PerID: false},
-	{Code: "ads", NameZh: "广告位", PerID: false},
-	{Code: "domain", NameZh: "域名解析", PerID: false},
+	{Code: PageFooter, NameZh: "Footer 页面", PerID: false},
+	{Code: PageAds, NameZh: "广告位", PerID: false},
+	{Code: PageDomain, NameZh: "域名解析", PerID: false},
 }
 
 // FindSpec 按 biz_module 查找导入模块声明；找不到返回 nil

@@ -41,7 +41,7 @@ job.go ── serviceGroup 同时启动 3 个服务：
 7. sitehub 业务 SQL 用 `svcCtx.SitehubDB` 占位符查询，NULL 列用 `sql.Null*` 承接
 8. 新配置项同步改 `internal/config/config.go` + `etc/job.yaml` + `etc/job.prod.yaml`
 9. 注释/日志用中文，日志用 `logx.WithContext`，错误用 `%w` 包装
-10. **涉及 async_task 表结构、pattern、payload 语义的变更必须与 web-admin API 仓库同步发版**
+10. **`pkg/asyncjob` / `pkg/importspec` 的任何变更（新增常量/函数/字段也算）、async_task 表结构、pattern、payload 语义的变更，必须与 web-admin API 仓库同步发版，顺序不可颠倒**：本仓合 `main` push → 打新 tag push → web-admin 侧 `GOWORK=off go get ...@新tag` 并通过 `GOWORK=off go build ./...` 后才允许其合并/部署。⚠️ 本地 go.work 优先用工作区源码，web-admin 本地绿 ≠ 可发版；`GOWORK=off go build` 等价 Docker 纯代理构建，是唯一真实验证（踩坑记录见 web-admin 仓库 DEVELOPMENT.md §14.1 / FAQ Q13）
 
 ## 新功能入口
 

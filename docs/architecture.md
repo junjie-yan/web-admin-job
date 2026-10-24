@@ -11,7 +11,8 @@
 | 负载 | 配置存储 | 触发方式 | 执行方式 |
 |---|---|---|---|
 | **定时任务**（cron） | `web_admin.sys_tasks` 表 | PeriodicTaskManager 按 cron 动态派发 | asynq worker 消费 |
-| **异步批量任务**（Excel 导入/导出/批量更新） | `web_admin.async_task` 表 | web-admin API 生产端入队 | asynq worker 消费 |
+| **异步批量任务**（Excel 导入/导出） | `web_admin.async_task` 表 | web-admin API 生产端入队 | asynq worker 消费 |
+| **sitemap 生成**（无输入文件，查库直传 R2） | `web_admin.async_task` 表 | web-admin API `POST /async_task/sitemap` 入队 | asynq worker 消费 |
 
 ## 2. 技术栈
 
@@ -66,11 +67,12 @@
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `DB` | `*ent.Client` | web_admin 库，定时任务配置表 |
-| `SitehubDB` | `*sql.DB` | sitehub 库原生 SQL，app_detail 批量操作 |
+| `SitehubDB` | `*sql.DB` | sitehub 库原生 SQL，业务数据批量操作 |
 | `AsynqServer` | `*asynq.Server` | 任务执行 worker |
 | `AsynqPTM` | `*asynq.PeriodicTaskManager` | 动态 cron 调度（配置源：DB） |
 | `AsyncTaskMgr` | `*asyncjob.Manager` | async_task 表持久化管理器 |
-| `R2` | `map[string]*helper.Instance` | R2 实例列表（按桶名取用，job 使用 `sem-web-private`；未配置时为空 map，文件功能降级禁用） |
+| `R2` | `map[string]*helper.Instance` | R2 实例列表（按桶名取用：`sem-web-private` 私有桶存任务输入/结果文件，`sem-web` 公开桶存站点 sitemap 等 SEO 公开资源；未配置时为空 map，文件功能降级禁用） |
+| `Config.WebAPIConf` | `WebAPIConf` | C 端站点 API（web-api-go）地址与 `X-Refresh-Token` 共享令牌，导入成功后调用其缓存刷新接口 |
 
 ## 5. 核心模块
 
@@ -91,16 +93,39 @@
 
 位置：`internal/mqs/amq/handler/amq/asynctask/`
 
+**分发器与公共件**：
+
 | 文件 | 职责 |
 |---|---|
 | `common.go` | **baseHandler**：任务生命周期公共方法（claimTask/readInputExcel/finish* 等，所有 Handler 嵌入复用） |
-| `errdetail.go` | 错误明细 Excel 生成并上传 R2（导入/批量更新共用） |
-| `dispatch.go` | 导入/导出分发器：asynq 同一 pattern 只能注册一个 handler，按 `task.BizModule` 路由到各业务处理器 |
-| `import_app_detail.go` | app_detail 导入处理器 ×2：批量新增（`app_detail_add`，按站点+商店链接判重）/ 批量更新（`app_detail_update`，按 站点域名+记录ID 定位并校验记录归属站点） |
-| `export_app_detail.go` | 导出 app_detail 为 Excel 上传 R2 |
-| `appdetail/` | **app_detail 业务域子包**：`parse.go` 行解析 / `resolver.go` 名称→ID / `repo.go` SQL 读写 / `export.go` 导出行结构与格式化 |
+| `errdetail.go` | 错误明细 Excel 生成并上传 R2（导入共用） |
+| `dispatch.go` | 导入分发器：asynq 同一 pattern 只能注册一个 handler，按 `task.BizModule` 路由到 11 个业务处理器（白名单 = `importspec.ImportModules()`，测试锁定） |
+| `cache_flush.go` | **cacheFlusher**：聚合单任务内成功写入涉及的缓存范围（`add` 去重 + `defer flush` 统一刷），经 `pkg/cacheflush` 调 web-api-go 刷新接口；失败仅记日志不阻断 |
 
-> Handler 只负责任务编排，业务域逻辑（行解析/SQL）收敛在同名子包；新增业务模块时参照 `appdetail/` 建子包。
+**导入处理器**（pattern `async_task:import`，由 dispatch 按 biz_module 路由）：
+
+| 文件 | 处理器（biz_module） |
+|---|---|
+| `import_app_detail.go` | `app_detail_add`（站点+商店链接判重）/ `app_detail_update`（站点域名+记录ID 定位）/ `app_detail_upsert`（商店链接定位：存在更新非空字段，不存在新增） |
+| `import_app_category.go` | `app_category_add` / `app_category_update`（同站点同层级判重；二级必填父分类，更新支持改父分类并校验父为同站点一级） |
+| `import_coupon.go` | `coupon`（upsert，按 商家域名+来源ID 定位） |
+| `import_coupon_category.go` | `coupon_category_add` / `coupon_category_update`（全局字典表，SiteID=0 整类刷） |
+| `import_coupon_merchant.go` | `coupon_merchant_add`（域名已存在则行失败）/ `coupon_merchant_update`（域名不存在则行失败） |
+| `import_merchant_base.go` | `coupon_merchant_base`（upsert，域名定位，保留兼容） |
+
+**sitemap 生成**（pattern `async_task:sitemap`，无输入文件）：
+
+| 文件 | 职责 |
+|---|---|
+| `sitemap.go` | `sitemapDispatcher`：查 site/二级分类/启用 APP，内存生成 3 个 XML 直传 R2 公开桶 `site/<域名>/sitemap/`，total=3 分步回报进度 |
+| `sitemap_xml.go` | XML 序列化纯函数（urlset/index、URL 规范化、域名 sanitize 防路径穿越） |
+
+**导出处理器**（pattern `async_task:export`）：`export_app_detail.go` / `export_coupon.go` /
+`export_merchant_base.go` / `export_category_base.go`。
+
+**业务域子包**（行解析 / 名称→ID / SQL 收敛，handler 只做编排）：
+`appdetail/`、`appcategory/`（parse/repo）、`categorybase/`（parse/repo/export）、
+`coupon/`、`merchant/`。新增业务模块时参照建子包。
 
 **baseHandler 生命周期方法**（详见 `common.go` 包注释）：
 
@@ -120,24 +145,24 @@ claimTask（payload + CAS 抢占 + biz/type 校验）→ readInputExcel
 → 分批执行业务（每批: 检查取消 → 处理 → reportProgress）→ uploadResult → finish*
 ```
 
-### 5.4 公共契约层（跨服务共享）— `pkg/asyncjob/`
+### 5.4 公共契约层（跨服务共享）— `pkg/`
 
-**这是理解异步任务体系的关键**。`pkg/asyncjob` 是唯一同时被 web-admin API（生产端）和本服务（消费端）引用的公开包（放 `pkg` 而非 `internal` 正为此设计）：
+**这是理解异步任务体系的关键**。`pkg/` 下各包同时被 web-admin API（生产端）和本服务（消费端）引用（放 `pkg` 而非 `internal` 正为此设计）：
 
-- 任务类型常量：`import / export / batch_update`
-- 状态机：`pending → processing → success / failed / partial / canceled`
-- 业务模块：`BizAppDetail = "app_detail"`（**新业务在此追加**）
-- asynq pattern：`async_task:import / async_task:batch_update / async_task:export`
-- `AsyncTaskPayload`：队列消息体，只含 `task_id`（任务详情从 async_task 表读取）
-- `Manager`：async_task 表全部持久化操作（Create / MarkProcessing / UpdateProgress / Finish / Cancel / Delete / List / GetByID），启动时幂等建表
+| 包 | 职责 |
+|---|---|
+| `pkg/asyncjob` | 任务类型常量（`import / export / sitemap`）、状态机（`pending → processing → success / failed / partial / canceled`）、业务模块枚举（**新业务在此追加**）、asynq pattern（`async_task:import / async_task:export / async_task:sitemap`）、`AsyncTaskPayload`（队列消息体，只含 `task_id`）、`Manager`（async_task 表全部持久化操作，含按 site_id 过滤的 List，启动时幂等建表） |
+| `pkg/importspec` | **站点类型→模块→列规格 唯一事实源**（垂直注册表）：模板表头生成、导入/导出白名单推导、前端元数据接口数据源（Entity 分组/字段类型/PerID 页面类型，`FindPageType`/`IsValidPageType` 供刷新入口做值域与单页刷新校验）。变更须与 web-admin 联合发版（升 go.mod 依赖） |
+| `pkg/cacheflush` | web-api-go 缓存刷新接口的极简 HTTP 客户端（`X-Refresh-Token` 共享令牌；job 不反向依赖 web-admin，独立声明同构结构） |
+| `pkg/slugify` | URL slug 生成（分类/APP 详情链接留空时按名称生成） |
 
-两端协作靠三样共享资源：**async_task 表（状态）+ Redis（消息）+ R2（文件）**；代码层面靠本契约包对齐。
+两端协作靠三样共享资源：**async_task 表（状态）+ Redis（消息）+ R2（文件）**；代码层面靠契约包对齐。
 
 ### 5.5 支撑模块
 
 | 目录 | 职责 |
 |---|---|
-| `internal/helper/` | Excel 解析/生成（excelize）、R2 客户端与文件上传下载 |
+| `internal/helper/` | Excel 解析/生成（excelize）、R2 客户端与文件上传下载（含 `PutBytesToKey` 固定 key 直传，sitemap 用） |
 | `internal/utils/entx/` | ent 事务封装（TxCtx/WithTx） |
 | `internal/utils/dberrorhandler/` | DB 错误统一转换 |
 | `ent/` + `ent/schema/` | ORM 生成代码与 schema（task → `sys_tasks`，task_log → `sys_task_logs`） |
@@ -159,13 +184,15 @@ claimTask（payload + CAS 抢占 + biz/type 校验）→ readInputExcel
 
 ### 6.2 `web_admin.async_task`（异步任务状态，两端共享，原生 SQL 管理）
 
-关键字段：`type`（import/export/batch_update）、`biz_module`、`status`（状态机）、`total_count / success_count / fail_count / progress`、`file_url / result_file_url`（R2）、`error_message / error_detail`（整体错误 + 前 200 条明细 JSON）、`operator_id / operator_name`、时间戳。
+关键字段：`type`（import/export/sitemap）、`biz_module`（sitemap 类任务同为 `sitemap`）、`site_id`（站点内任务预置站点，0=跨站点通用；看板按此筛选并解析域名展示）、`status`（状态机）、`total_count / success_count / fail_count / progress`、`file_url / result_file_url`（R2；sitemap 任务无输入文件）、`error_message / error_detail`（整体错误 + 前 200 条明细 JSON）、`operator_id / operator_name`、时间戳。
 
 建表由 `asyncjob.Manager.EnsureTable` 幂等执行（两端服务启动时都会调用）。
 
-### 6.3 `sitehub.app_detail`（业务表）
+### 6.3 `sitehub` 业务表（直连批量操作）
 
-由异步任务通过 `SitehubDB` 原生 SQL 批量写入/更新/导出。**直连业务库是刻意设计**：避免 web-admin-job 反向依赖 web-admin 的 coreclient 造成循环依赖。
+由异步任务通过 `SitehubDB` 原生 SQL 批量写入/更新/导出：`app_detail`、`app_category`、
+`coupon`、`coupon_merchant_base`、`coupon_category_base`（导入），以及 sitemap 任务对
+`site` / `app_category` / `app_detail` 的只读查询。**直连业务库是刻意设计**：避免 web-admin-job 反向依赖 web-admin 的 coreclient 造成循环依赖。
 
 ## 7. 关键设计决策
 
@@ -174,7 +201,11 @@ claimTask（payload + CAS 抢占 + biz/type 校验）→ readInputExcel
 3. **CAS 防重复消费**：`MarkProcessing` 仅允许 `pending → processing`，多 worker 竞争时只有一个成功；已取消任务直接跳过。
 4. **业务失败 ≠ 基础设施失败**：Handler 中业务性失败（解析失败、数据错误）调用 `finishFailed` 后 `return nil`，**不触发 asynq 重试**；只有基础设施级错误才返回 error 让 asynq 重试。
 5. **批处理约定**：Excel 导入每批 50 行、`IN` 查询每批 500 条、错误明细最多保留前 200 条。
-6. **可观测性**：Prometheus :4005/metrics；部署流水线 TCP 健康检查 9105，失败自动回滚。
+6. **写后自动缓存失效**：导入 handler 与 rpc 写路径在写库成功后按「表 → C 端页面类型」刷新
+   web-api-go 缓存（job 侧 `cacheFlusher` 聚合去重、整类前缀刷新防风暴；范围常量统一引用
+   `pkg/importspec` 页面类型，失败仅记日志，C 端 TTL 兜底）。详见 web-admin 仓库
+   `docs/SITE-DATA-PLATFORM.md` §5.7。
+7. **可观测性**：Prometheus :4005/metrics；部署流水线 TCP 健康检查 9105，失败自动回滚。
 
 ## 8. 部署架构
 

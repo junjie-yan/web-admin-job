@@ -40,6 +40,8 @@ func TestHeadersMatchGolden(t *testing.T) {
 	}{
 		{"app_detail_add", goldenAppDetailAdd},
 		{"app_detail_update", goldenAppDetailUpdate},
+		// upsert 与新增共用列布局（存在更新非空字段、不存在新增）
+		{"app_detail_upsert", goldenAppDetailAdd},
 		{"coupon", goldenCoupon},
 		{"coupon_merchant_base", goldenMerchant},
 	}
@@ -87,7 +89,12 @@ func TestHeadersScoped(t *testing.T) {
 
 // TestRegistryModules 白名单推导结果与当前线上白名单一致
 func TestRegistryModules(t *testing.T) {
-	wantImport := []string{"app_detail_add", "app_detail_update", "coupon", "coupon_merchant_base"}
+	wantImport := []string{
+		"app_category_add", "app_category_update",
+		"app_detail_add", "app_detail_update", "app_detail_upsert",
+		"coupon", "coupon_category_add", "coupon_category_update",
+		"coupon_merchant_add", "coupon_merchant_base", "coupon_merchant_update",
+	}
 	gotImport := ImportModules()
 	slices.Sort(gotImport)
 	if !slices.Equal(gotImport, wantImport) {
@@ -98,5 +105,32 @@ func TestRegistryModules(t *testing.T) {
 	slices.Sort(gotExport)
 	if !slices.Equal(gotExport, wantExport) {
 		t.Fatalf("导出白名单不一致: got %v want %v", gotExport, wantExport)
+	}
+}
+
+// TestFindPageTypePerID 页面类型 PerID 标记与缓存键格式对齐：
+// 只有键含数字 id 段的页面（store/coupon/category/event）才允许单页刷新；
+// footer/ads/domain/app_detail/categories/merchants/coupons 键无 id 段，
+// 携带 recordId 会拼出匹配不到任何键的 pattern（假成功），刷新入口据此置 0
+func TestFindPageTypePerID(t *testing.T) {
+	perIDPages := map[string]bool{
+		"store": true, "coupon": true, "category": true, "event": true,
+	}
+	for vertical, pages := range map[string][]string{
+		"app":    {"app_detail", "categories", "footer", "ads", "domain"},
+		"coupon": {"coupons", "merchants", "store", "coupon", "categories", "category", "event", "footer", "ads", "domain"},
+	} {
+		for _, page := range pages {
+			pt := FindPageType(vertical, page)
+			if pt == nil {
+				t.Fatalf("%s/%s 应为可刷新页面类型", vertical, page)
+			}
+			if pt.PerID != perIDPages[page] {
+				t.Errorf("%s/%s PerID=%v, 期望 %v", vertical, page, pt.PerID, perIDPages[page])
+			}
+		}
+	}
+	if pt := FindPageType("app", "nonexistent"); pt != nil {
+		t.Errorf("未注册页面应返回 nil, got %+v", pt)
 	}
 }

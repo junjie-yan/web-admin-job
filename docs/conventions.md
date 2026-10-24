@@ -11,6 +11,7 @@ job.go (入口)
               └── svc.ServiceContext / ent / pkg/asyncjob
 internal/mqs/amq/handler  ← asynq 消费端 Handler
 pkg/asyncjob              ← 跨服务公共契约（与 web-admin API 共享）
+pkg/importspec            ← 站点类型→模块→列规格 唯一事实源（与 web-admin API 共享）
 ```
 
 **强制规则：**
@@ -22,6 +23,7 @@ pkg/asyncjob              ← 跨服务公共契约（与 web-admin API 共享�
 | R3 | server 层（`internal/server`）是生成代码，禁止手改；业务一律写在 logic |
 | R4 | 异步任务 pattern 常量直接使用 `pkg/asyncjob`（`asyncjob.PatternXxx`），禁止新建中间 re-export 包装包，保持单一事实源 |
 | R5 | 跨服务共享的表（async_task）只通过 `asyncjob.Manager` 读写，禁止在 handler 里裸写 SQL |
+| R6 | 模板列序、页面类型、站点/实体常量必须引用 `pkg/importspec`（`spec.Columns`、`PageXxx`、`SiteTypeXxx`），禁止复制字面量；spec 变更必须与 web-admin 联合发版（job 打 tag → web-admin 升依赖） |
 
 ## 2. Handler 编写规则（asynq 消费端）
 
@@ -70,14 +72,17 @@ pkg/asyncjob              ← 跨服务公共契约（与 web-admin API 共享�
 |---|---|
 | G1 | 提交信息用英文祈使句或中文均可，需体现"为什么"；示例：`fix: avoid duplicate import when worker retries` |
 | G2 | 推送 `main` 即自动部署生产（core-job），**合并前必须本地验证启动 + lint** |
-| G3 | 破坏性变更（async_task 表结构、pattern 语义、payload 结构）必须与 web-admin API 端同步发版，先合本仓库后合 API 端 |
+| G3 | **`pkg/asyncjob` / `pkg/importspec` 任何变更（新增常量/函数/字段也算）、async_task 表结构、pattern 语义、payload 结构**必须与 web-admin API 端同步发版。顺序：① 本仓合 `main` push → ② 打新 tag push → ③ web-admin 侧 `GOWORK=off go get ...@新tag` + `GOWORK=off go build ./...` 通过后才合并/部署。本地 go.work 优先用工作区源码，消费端本地绿 ≠ 可发版 |
 | G4 | 部署失败回滚由 CI 自动执行，人工不要在服务器上直接改容器 |
 
 ## 7. 评审清单（PR 自检）
 
 - [ ] 新任务 pattern/类型/模块常量已加入 `pkg/asyncjob`，且生产端已同步？
-- [ ] Handler 已注册到 `mqtask/register.go`？
+- [ ] 导入模块已声明 `pkg/importspec` spec（列序 golden 测试通过）并注册到 `dispatch.go` 白名单？
+- [ ] spec 有变更时已与 web-admin 联合发版（job tag + web-admin go.mod 升级）？
+- [ ] Handler 已注册到 `mqtask/register.go`（新 pattern）？
 - [ ] 分批处理 + 取消检查 + 进度回写齐全？
+- [ ] 写库成功路径已接 `cacheFlusher`（`fl.add` 范围与「表 → 页面类型」映射一致，含 store 等派生页）？
 - [ ] 业务失败走 `finishFailed` + `return nil`，无意外重试风险？
 - [ ] SQL 无注入风险、NULL 承接正确？
 - [ ] `make fmt` / `make lint` / `make test` 通过？

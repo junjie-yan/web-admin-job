@@ -29,6 +29,10 @@ func newImportCoupon(svcCtx *svc.ServiceContext) *importCoupon {
 // process 处理已领取的导入任务（rows 为输入 Excel 数据行，已跳过表头）
 func (h *importCoupon) process(ctx context.Context, task *asyncjob.Task, rows [][]string) {
 	logger := logx.WithContext(ctx)
+	// 聚合本任务成功写入的缓存范围，结束时统一刷新 C 端缓存（失败仅记日志）
+	// coupon 表无 site_id，整类跨实例刷新（SiteID=0）
+	fl := newCacheFlusher(h.svcCtx)
+	defer fl.flush(ctx)
 
 	total := uint64(len(rows))
 	if total == 0 {
@@ -116,6 +120,7 @@ func (h *importCoupon) process(ctx context.Context, task *asyncjob.Task, rows []
 				continue
 			}
 			updated++
+			fl.add(siteCoupon, 0, pageCoupons, pageCoupon, pageStore)
 		}
 
 		final := make([]*coupon.Row, 0, len(order))
@@ -131,9 +136,11 @@ func (h *importCoupon) process(ctx context.Context, task *asyncjob.Task, rows []
 						continue
 					}
 					inserted++
+					fl.add(siteCoupon, 0, pageCoupons, pageCoupon, pageStore)
 				}
 			} else {
 				inserted += uint64(len(final))
+				fl.add(siteCoupon, 0, pageCoupons, pageCoupon, pageStore)
 			}
 		}
 
